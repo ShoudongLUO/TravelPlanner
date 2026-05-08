@@ -1,0 +1,68 @@
+import { NextRequest } from 'next/server'
+import { streamItinerary, parseItineraryContent } from '@/lib/gemini'
+import { searchYoutubeVideos } from '@/lib/youtube'
+import { createClient } from '@/lib/supabase/server'
+import type { GenerateRequest, ItineraryReview } from '@/lib/types'
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  const { destination, start_date, days, budget } = body as GenerateRequest
+
+  if (!destination || !start_date || !days || !budget) {
+    return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  let priorReviews: ItineraryReview[] = []
+  if (user) {
+    const { data } = await supabase
+      .from('itinerary_reviews')
+      .select(`*, itineraries!inner(destination, user_id)`)
+      .eq('itineraries.user_id', user.id)
+      .eq('itineraries.destination', destination)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    priorReviews = data ?? []
+  }
+
+  const encoder = new TextEncoder()
+  const [youtubeVideos, stream] = await Promise.all([
+    searchYoutubeVideos(destination),
+    (async () => streamItinerary({ destination, start_date, days, budget }, priorReviews))(),
+  ])
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      let fullText = ''
+      try {
+        for await (const chunk of stream) {
+          fullText += chunk
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`))
+        }
+        const content = parseItineraryContent(fullText)
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: 'done', content, youtube_videos: youtubeVideos })}\n\n`)
+        )
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Generation failed' })}\n\n`)
+        )
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(readableStream, {
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    },
+  })
+}
