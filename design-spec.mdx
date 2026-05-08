@@ -1,0 +1,191 @@
+# TravelAI 旅游攻略系统 — 设计文档
+
+**日期：** 2026-05-08  
+**状态：** 待实施  
+**定位：** 练手型产品项目，支持小范围用户免费使用
+
+---
+
+## 1. 项目概述
+
+用户通过可视化界面输入目的地、出发日期、旅行天数和预算，系统并行调用 Gemini AI 和 YouTube Data API，生成一份完整的旅游攻略文档（行程 + 预算表 + 贴士 + 视频 + 小红书跳转链接）。用户旅行后可提交反馈，反馈内容作为上下文注入后续同目的地攻略的生成 prompt，形成推荐质量闭环。
+
+---
+
+## 2. 技术栈
+
+| 层级 | 技术 | 免费方案 |
+|------|------|----------|
+| 前端 + API | Next.js 15 (App Router) | Vercel Hobby 计划 |
+| 数据库 + Auth | Supabase | 免费层（500MB DB）|
+| OAuth | Google / GitHub（via Supabase Auth）| 免费 |
+| LLM | Google Gemini 1.5 Flash | 免费层（1500次/天）|
+| 视频数据 | YouTube Data API v3 | 免费（10,000 quota/天）|
+| 小红书 | 无 API，生成搜索跳转 URL | 免费 |
+
+---
+
+## 3. 页面结构
+
+### 3.1 首页（输入表单）
+- Hero 区：紫蓝渐变背景，浮动白色搜索卡片
+- 表单字段：目的地、出发日期、旅行天数、总预算（元）
+- 热门目的地标签（快速填入）
+- 主色调：`#667eea → #764ba2`，背景 `#f0f4f8`
+
+### 3.2 攻略生成页
+- 左主区：流式逐步输出行程（Day by Day），进度条
+- 右侧栏：YouTube 视频卡片（并行加载）、小红书搜索链接
+- 打字机光标动效
+- 生成完成后显示「保存攻略」按钮（登录用户自动保存）
+
+### 3.3 攻略详情页
+- 渐变顶部 Banner + 导出/分享按钮
+- Tab 切换：行程 / 预算明细 / 旅行贴士 / 相关视频
+- 有反馈后显示实际 vs 计划花费对比
+- 「写旅行反馈」入口（旅行日期过后显示）
+
+### 3.4 历史攻略页
+- 卡片网格，状态标识：待出发 / 已出发待反馈 / 已反馈
+- 最后一格：「新建攻略」快捷入口
+
+### 3.5 反馈表单（Modal）
+- 整体评分（1-5 星）、实际花费、旅行亮点、改进建议、旅行日期
+
+---
+
+## 4. 数据模型
+
+### `auth.users`（Supabase Auth 托管）
+id · email · provider · created_at
+
+### `itineraries`
+id · user_id(FK) · destination · start_date · days · budget · content(jsonb) · youtube_videos(jsonb) · created_at
+
+**content JSONB 结构：**
+```json
+{
+  "summary": "概览文字",
+  "days": [{ "title": "Day 1", "activities": ["上午：...", "下午：..."] }],
+  "budget_breakdown": { "transport": 0, "accommodation": 0, "food": 0, "tickets": 0, "misc": 0 },
+  "tips": [],
+  "xhs_queries": []
+}
+```
+
+### `itinerary_reviews`
+id · itinerary_id(FK, UNIQUE) · user_id(FK) · rating(1-5) · actual_budget · highlights · improvements · visited_at · created_at
+
+**RLS：** `auth.uid() = user_id`（两张表统一）
+
+---
+
+## 5. API Routes
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/api/generate` | 可选 | Gemini + YouTube 并行，SSE 流式；注入历史反馈 |
+| POST | `/api/itineraries` | 需登录 | 保存生成结果 |
+| GET | `/api/itineraries` | 需登录 | 最近 10 条列表（含 review 状态）|
+| GET | `/api/itineraries/[id]` | 需登录 | 完整攻略 + 关联 review |
+| DELETE | `/api/itineraries/[id]` | 需登录 | 删除攻略，级联删除 review |
+| POST | `/api/itineraries/[id]/review` | 需登录 | 提交反馈（每条攻略只能一次）|
+| PATCH | `/api/itineraries/[id]/review` | 需登录 | 修改反馈 |
+| GET | `/api/youtube` | 内部 | YouTube Data API v3 封装 |
+
+---
+
+## 6. 核心数据流
+
+### 生成攻略
+```
+用户提交表单
+  → POST /api/generate
+  → 查询同目的地历史 reviews（最近 3 条）
+  → 构建 Gemini system prompt（注入反馈摘要）
+  → Promise.all([Gemini streaming, YouTube search])
+  → SSE 流式推送给前端
+  → 登录用户自动保存到 Supabase
+```
+
+### 反馈闭环
+```
+用户完成旅行 → 提交反馈 → 存入 itinerary_reviews
+  → 下次生成同目的地攻略时注入 prompt：
+    "亮点：{highlights}，改进：{improvements}，
+     实际花费：{actual_budget}（计划：{budget}）"
+```
+
+---
+
+## 7. 错误处理
+
+| 场景 | 处理策略 |
+|------|----------|
+| Gemini API 超限 | 返回 429，提示「今日已达上限，明日再试」|
+| YouTube quota 耗尽 | 视频区降级为跳转搜索按钮 |
+| Gemini 响应超时（>30s）| SSE 推送错误事件，前端提示重试 |
+| 用户未登录尝试保存 | 内容存 sessionStorage，登录后自动保存 |
+| Supabase 连接失败 | 提示「保存失败，请手动复制攻略」|
+
+---
+
+## 8. 项目目录结构
+
+```
+travel_planner/
+├── app/
+│   ├── page.tsx                      # 首页
+│   ├── generate/page.tsx             # 攻略生成页
+│   ├── itineraries/
+│   │   ├── page.tsx                  # 历史列表页
+│   │   └── [id]/page.tsx             # 攻略详情页
+│   └── api/
+│       ├── generate/route.ts         # 核心生成接口（SSE）
+│       ├── itineraries/
+│       │   ├── route.ts
+│       │   └── [id]/
+│       │       ├── route.ts
+│       │       └── review/route.ts
+│       └── youtube/route.ts
+├── components/
+│   ├── SearchForm.tsx
+│   ├── ItineraryStream.tsx
+│   ├── ItineraryDetail.tsx
+│   ├── ReviewModal.tsx
+│   └── YoutubeCard.tsx
+├── lib/
+│   ├── gemini.ts
+│   ├── youtube.ts
+│   ├── supabase/
+│   │   ├── client.ts
+│   │   └── server.ts
+│   └── prompt.ts
+├── supabase/
+│   └── migrations/
+│       ├── 001_itineraries.sql
+│       └── 002_reviews.sql
+└── .env.local
+```
+
+---
+
+## 9. 环境变量
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+GEMINI_API_KEY=
+YOUTUBE_API_KEY=
+```
+
+---
+
+## 10. 范围外（本版本不实现）
+
+- 多用户攻略分享 / 社区功能
+- PDF 导出
+- 多语言支持
+- 移动端 App
+- 攻略评论 / 点赞

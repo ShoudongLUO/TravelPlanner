@@ -1,0 +1,2389 @@
+# TravelAI 旅游攻略系统 — 实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 从零搭建一个 Next.js 旅游攻略生成系统，用户输入目的地/时间/预算，AI 生成完整攻略（行程+预算+贴士），含 YouTube 视频嵌入、小红书跳转、登录保存、旅行后反馈闭环。
+
+**Architecture:** Next.js 15 App Router 一体化（前端 + API Routes），Supabase 管理数据库和 OAuth，Gemini 1.5 Flash 流式生成攻略，YouTube Data API v3 并行拉取视频。
+
+**Tech Stack:** Next.js 15, TypeScript, Supabase, Google Gemini API, YouTube Data API v3, Tailwind CSS, Jest + React Testing Library
+
+---
+
+## 文件结构总览
+
+```
+travel_planner/
+├── app/
+│   ├── layout.tsx                        # 根布局，含 Supabase Auth Provider
+│   ├── page.tsx                          # 首页（SearchForm）
+│   ├── generate/page.tsx                 # 攻略生成页（SSE 流式输出）
+│   ├── itineraries/
+│   │   ├── page.tsx                      # 历史列表页
+│   │   └── [id]/page.tsx                 # 攻略详情页
+│   └── api/
+│       ├── generate/route.ts             # POST — SSE 生成
+│       ├── itineraries/
+│       │   ├── route.ts                  # GET list / POST save
+│       │   └── [id]/
+│       │       ├── route.ts              # GET detail / DELETE
+│       │       └── review/route.ts       # POST create / PATCH update
+│       └── youtube/route.ts              # GET YouTube 搜索
+├── components/
+│   ├── SearchForm.tsx                    # 首页输入表单
+│   ├── ItineraryStream.tsx               # SSE 流式展示
+│   ├── YoutubeCard.tsx                   # YouTube 视频卡片
+│   ├── ItineraryDetail.tsx               # 详情 Tab 组件
+│   ├── ItineraryCard.tsx                 # 历史列表卡片
+│   └── ReviewModal.tsx                   # 反馈表单 Modal
+├── lib/
+│   ├── types.ts                          # 全局 TypeScript 类型
+│   ├── gemini.ts                         # Gemini API 封装（流式）
+│   ├── youtube.ts                        # YouTube API 封装
+│   ├── prompt.ts                         # Prompt 构建（含反馈注入）
+│   └── supabase/
+│       ├── client.ts                     # 浏览器端 Supabase client
+│       └── server.ts                     # 服务端 Supabase client
+├── supabase/
+│   └── migrations/
+│       ├── 001_itineraries.sql
+│       └── 002_reviews.sql
+└── .env.local
+```
+
+---
+
+## Task 1: 项目脚手架 + 依赖安装
+
+**Files:**
+- Create: `package.json`, `tsconfig.json`, `tailwind.config.ts`, `.env.local`, `.gitignore`
+- Create: `jest.config.ts`, `jest.setup.ts`
+
+- [ ] **Step 1: 初始化 Next.js 项目**
+
+```bash
+cd D:\travel_planner
+npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir=no --import-alias="@/*"
+```
+
+当询问时选择：Yes to TypeScript, Yes to Tailwind, Yes to App Router, No to src/
+
+- [ ] **Step 2: 安装额外依赖**
+
+```bash
+npm install @google/generative-ai @supabase/supabase-js @supabase/ssr
+npm install -D jest jest-environment-jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event ts-jest
+```
+
+- [ ] **Step 3: 配置 Jest**
+
+创建 `jest.config.ts`：
+```typescript
+import type { Config } from 'jest'
+import nextJest from 'next/jest.js'
+
+const createJestConfig = nextJest({ dir: './' })
+
+const config: Config = {
+  coverageProvider: 'v8',
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+}
+
+export default createJestConfig(config)
+```
+
+创建 `jest.setup.ts`：
+```typescript
+import '@testing-library/jest-dom'
+```
+
+- [ ] **Step 4: 配置 `.env.local`**
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+GEMINI_API_KEY=your_gemini_key
+YOUTUBE_API_KEY=your_youtube_key
+```
+
+- [ ] **Step 5: 配置 `.gitignore` 追加条目**
+
+```
+.env.local
+.env*.local
+```
+
+- [ ] **Step 6: 验证项目启动**
+
+```bash
+npm run dev
+```
+
+预期：浏览器打开 http://localhost:3000 显示 Next.js 默认页面
+
+- [ ] **Step 7: 提交**
+
+```bash
+git init
+git add .
+git commit -m "chore: scaffold Next.js project with dependencies"
+```
+
+---
+
+## Task 2: TypeScript 类型定义
+
+**Files:**
+- Create: `lib/types.ts`
+- Create: `__tests__/lib/types.test.ts`
+
+- [ ] **Step 1: 编写类型测试**
+
+创建 `__tests__/lib/types.test.ts`：
+```typescript
+import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown } from '@/lib/types'
+
+describe('types', () => {
+  it('Itinerary has required fields', () => {
+    const itinerary: Itinerary = {
+      id: 'uuid',
+      user_id: 'uuid',
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+      content: {
+        summary: '',
+        days: [],
+        budget_breakdown: { transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        tips: [],
+        xhs_queries: [],
+      },
+      youtube_videos: [],
+      created_at: '2025-05-08T00:00:00Z',
+    }
+    expect(itinerary.destination).toBe('京都')
+  })
+
+  it('GenerateRequest has required fields', () => {
+    const req: GenerateRequest = {
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+    }
+    expect(req.days).toBe(5)
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/lib/types.test.ts --no-coverage
+```
+
+预期：FAIL — 无法找到模块 `@/lib/types`
+
+- [ ] **Step 3: 实现类型定义**
+
+创建 `lib/types.ts`：
+```typescript
+export interface BudgetBreakdown {
+  transport: number
+  accommodation: number
+  food: number
+  tickets: number
+  misc: number
+}
+
+export interface DayPlan {
+  title: string
+  activities: string[]
+}
+
+export interface ItineraryContent {
+  summary: string
+  days: DayPlan[]
+  budget_breakdown: BudgetBreakdown
+  tips: string[]
+  xhs_queries: string[]
+}
+
+export interface YoutubeVideo {
+  id: string
+  title: string
+  thumbnail: string
+  url: string
+}
+
+export interface Itinerary {
+  id: string
+  user_id: string
+  destination: string
+  start_date: string
+  days: number
+  budget: number
+  content: ItineraryContent
+  youtube_videos: YoutubeVideo[]
+  created_at: string
+}
+
+export interface ItineraryReview {
+  id: string
+  itinerary_id: string
+  user_id: string
+  rating: number
+  actual_budget: number
+  highlights: string
+  improvements: string
+  visited_at: string
+  created_at: string
+}
+
+export interface GenerateRequest {
+  destination: string
+  start_date: string
+  days: number
+  budget: number
+}
+
+export type ReviewStatus = 'pending' | 'visited_no_review' | 'reviewed'
+
+export interface ItinerarySummary {
+  id: string
+  destination: string
+  start_date: string
+  days: number
+  budget: number
+  created_at: string
+  review_status: ReviewStatus
+}
+```
+
+- [ ] **Step 4: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/lib/types.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add lib/types.ts __tests__/lib/types.test.ts
+git commit -m "feat: add TypeScript type definitions"
+```
+
+---
+
+## Task 3: Supabase 客户端 + 数据库迁移
+
+**Files:**
+- Create: `lib/supabase/client.ts`
+- Create: `lib/supabase/server.ts`
+- Create: `supabase/migrations/001_itineraries.sql`
+- Create: `supabase/migrations/002_reviews.sql`
+
+前置条件：在 [supabase.com](https://supabase.com) 创建新项目，获取 URL 和 keys，更新 `.env.local`。
+
+- [ ] **Step 1: 创建浏览器端 Supabase client**
+
+创建 `lib/supabase/client.ts`：
+```typescript
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+```
+
+- [ ] **Step 2: 创建服务端 Supabase client**
+
+创建 `lib/supabase/server.ts`：
+```typescript
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        },
+      },
+    }
+  )
+}
+```
+
+- [ ] **Step 3: 创建 itineraries 迁移**
+
+创建 `supabase/migrations/001_itineraries.sql`：
+```sql
+create table public.itineraries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  destination text not null,
+  start_date date not null,
+  days integer not null check (days > 0 and days <= 30),
+  budget integer not null check (budget > 0),
+  content jsonb not null default '{}',
+  youtube_videos jsonb not null default '[]',
+  created_at timestamptz not null default now()
+);
+
+create index itineraries_user_id_idx on public.itineraries(user_id);
+create index itineraries_destination_idx on public.itineraries(destination);
+
+alter table public.itineraries enable row level security;
+
+create policy "users_own_itineraries" on public.itineraries
+  for all using (auth.uid() = user_id);
+```
+
+- [ ] **Step 4: 创建 reviews 迁移**
+
+创建 `supabase/migrations/002_reviews.sql`：
+```sql
+create table public.itinerary_reviews (
+  id uuid primary key default gen_random_uuid(),
+  itinerary_id uuid not null references public.itineraries(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  rating integer not null check (rating >= 1 and rating <= 5),
+  actual_budget integer not null check (actual_budget > 0),
+  highlights text not null default '',
+  improvements text not null default '',
+  visited_at date not null,
+  created_at timestamptz not null default now(),
+  constraint one_review_per_itinerary unique (itinerary_id)
+);
+
+alter table public.itinerary_reviews enable row level security;
+
+create policy "users_own_reviews" on public.itinerary_reviews
+  for all using (auth.uid() = user_id);
+```
+
+- [ ] **Step 5: 在 Supabase Dashboard 执行迁移**
+
+在 Supabase Dashboard → SQL Editor，依次执行 `001_itineraries.sql` 和 `002_reviews.sql` 的内容。
+
+- [ ] **Step 6: 配置 Google OAuth（Supabase Dashboard）**
+
+进入 Authentication → Providers → Google，填入 Client ID 和 Secret（从 Google Cloud Console 获取），Redirect URL 填入 Supabase 提供的回调地址。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add lib/supabase/ supabase/
+git commit -m "feat: add Supabase clients and database migrations"
+```
+
+---
+
+## Task 4: YouTube API 封装 + Route
+
+**Files:**
+- Create: `lib/youtube.ts`
+- Create: `app/api/youtube/route.ts`
+- Create: `__tests__/lib/youtube.test.ts`
+
+- [ ] **Step 1: 编写 youtube 工具函数测试**
+
+创建 `__tests__/lib/youtube.test.ts`：
+```typescript
+import { buildYoutubeSearchUrl, parseYoutubeResponse } from '@/lib/youtube'
+
+describe('buildYoutubeSearchUrl', () => {
+  it('builds correct URL with destination', () => {
+    const url = buildYoutubeSearchUrl('京都')
+    expect(url).toContain('q=%E4%BA%AC%E9%83%BD')
+    expect(url).toContain('part=snippet')
+    expect(url).toContain('maxResults=4')
+  })
+})
+
+describe('parseYoutubeResponse', () => {
+  it('maps API response to YoutubeVideo array', () => {
+    const raw = {
+      items: [
+        {
+          id: { videoId: 'abc123' },
+          snippet: {
+            title: '京都攻略',
+            thumbnails: { medium: { url: 'https://img.example.com/thumb.jpg' } },
+          },
+        },
+      ],
+    }
+    const result = parseYoutubeResponse(raw)
+    expect(result).toHaveLength(1)
+    expect(result[0]).toEqual({
+      id: 'abc123',
+      title: '京都攻略',
+      thumbnail: 'https://img.example.com/thumb.jpg',
+      url: 'https://www.youtube.com/watch?v=abc123',
+    })
+  })
+
+  it('returns empty array for empty items', () => {
+    expect(parseYoutubeResponse({ items: [] })).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/lib/youtube.test.ts --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `lib/youtube.ts`**
+
+创建 `lib/youtube.ts`：
+```typescript
+import type { YoutubeVideo } from './types'
+
+const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3/search'
+
+export function buildYoutubeSearchUrl(destination: string): string {
+  const params = new URLSearchParams({
+    part: 'snippet',
+    q: `${destination} 旅游攻略`,
+    type: 'video',
+    maxResults: '4',
+    relevanceLanguage: 'zh',
+    key: process.env.YOUTUBE_API_KEY ?? '',
+  })
+  return `${YOUTUBE_API_BASE}?${params}`
+}
+
+export function parseYoutubeResponse(raw: { items: unknown[] }): YoutubeVideo[] {
+  return raw.items.map((item: any) => ({
+    id: item.id.videoId,
+    title: item.snippet.title,
+    thumbnail: item.snippet.thumbnails.medium.url,
+    url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+  }))
+}
+
+export async function searchYoutubeVideos(destination: string): Promise<YoutubeVideo[]> {
+  const url = buildYoutubeSearchUrl(destination)
+  const res = await fetch(url)
+  if (!res.ok) {
+    if (res.status === 403) return [] // quota exceeded — degrade gracefully
+    throw new Error(`YouTube API error: ${res.status}`)
+  }
+  const data = await res.json()
+  return parseYoutubeResponse(data)
+}
+```
+
+- [ ] **Step 4: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/lib/youtube.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 5: 实现 `/api/youtube` route**
+
+创建 `app/api/youtube/route.ts`：
+```typescript
+import { NextRequest, NextResponse } from 'next/server'
+import { searchYoutubeVideos } from '@/lib/youtube'
+
+export async function GET(request: NextRequest) {
+  const destination = request.nextUrl.searchParams.get('destination')
+  if (!destination) {
+    return NextResponse.json({ error: 'destination required' }, { status: 400 })
+  }
+  try {
+    const videos = await searchYoutubeVideos(destination)
+    return NextResponse.json({ videos })
+  } catch (error) {
+    return NextResponse.json({ error: 'YouTube search failed' }, { status: 500 })
+  }
+}
+```
+
+- [ ] **Step 6: 手动验证**
+
+```bash
+npm run dev
+# 新终端：
+curl "http://localhost:3000/api/youtube?destination=京都"
+```
+
+预期：返回 JSON，含 `videos` 数组（需要有效的 YOUTUBE_API_KEY）
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add lib/youtube.ts app/api/youtube/ __tests__/lib/youtube.test.ts
+git commit -m "feat: add YouTube API client and route"
+```
+
+---
+
+## Task 5: Gemini 封装 + Prompt 构建
+
+**Files:**
+- Create: `lib/gemini.ts`
+- Create: `lib/prompt.ts`
+- Create: `__tests__/lib/prompt.test.ts`
+
+- [ ] **Step 1: 编写 prompt 构建测试**
+
+创建 `__tests__/lib/prompt.test.ts`：
+```typescript
+import { buildSystemPrompt, buildUserPrompt } from '@/lib/prompt'
+import type { GenerateRequest, ItineraryReview } from '@/lib/types'
+
+const baseRequest: GenerateRequest = {
+  destination: '京都',
+  start_date: '2025-06-15',
+  days: 5,
+  budget: 8000,
+}
+
+describe('buildUserPrompt', () => {
+  it('includes destination and budget', () => {
+    const prompt = buildUserPrompt(baseRequest)
+    expect(prompt).toContain('京都')
+    expect(prompt).toContain('8000')
+    expect(prompt).toContain('5')
+  })
+})
+
+describe('buildSystemPrompt', () => {
+  it('returns base prompt when no reviews', () => {
+    const prompt = buildSystemPrompt([])
+    expect(prompt).toContain('旅游攻略')
+    expect(prompt).not.toContain('历史反馈')
+  })
+
+  it('injects feedback when reviews provided', () => {
+    const reviews: ItineraryReview[] = [{
+      id: '1',
+      itinerary_id: '2',
+      user_id: '3',
+      rating: 4,
+      actual_budget: 9200,
+      highlights: '伏见稻荷早上6点前人很少',
+      improvements: 'Day 3 行程太赶',
+      visited_at: '2025-06-20',
+      created_at: '2025-06-25T00:00:00Z',
+    }]
+    const prompt = buildSystemPrompt(reviews)
+    expect(prompt).toContain('历史反馈')
+    expect(prompt).toContain('伏见稻荷早上6点前人很少')
+    expect(prompt).toContain('Day 3 行程太赶')
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/lib/prompt.test.ts --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `lib/prompt.ts`**
+
+创建 `lib/prompt.ts`：
+```typescript
+import type { GenerateRequest, ItineraryReview } from './types'
+
+export function buildSystemPrompt(reviews: ItineraryReview[]): string {
+  const base = `你是一位专业旅游规划师，请根据用户提供的目的地、日期、天数和预算，生成一份详细的旅游攻略。
+
+攻略必须包含以下内容，以 JSON 格式返回：
+{
+  "summary": "目的地概览（2-3句）",
+  "days": [
+    {
+      "title": "Day N · 主题",
+      "activities": ["上午：...", "下午：...", "晚上：...（含推荐餐厅和价格）"]
+    }
+  ],
+  "budget_breakdown": {
+    "transport": 数字,
+    "accommodation": 数字,
+    "food": 数字,
+    "tickets": 数字,
+    "misc": 数字
+  },
+  "tips": ["实用贴士1", "贴士2", "贴士3"],
+  "xhs_queries": ["小红书搜索关键词1", "关键词2"]
+}
+
+要求：
+- 预算单位为人民币元，所有金额为整数
+- budget_breakdown 各项之和应等于总预算
+- tips 至少 3 条，包含签证、最佳季节、注意事项等
+- xhs_queries 提供 3 个小红书搜索词
+- 只返回 JSON，不加任何其他文字`
+
+  if (reviews.length === 0) return base
+
+  const feedbackSection = reviews
+    .slice(0, 3)
+    .map((r, i) => `
+反馈${i + 1}（评分 ${r.rating}/5，实际花费 ¥${r.actual_budget}）：
+- 亮点：${r.highlights}
+- 改进建议：${r.improvements}`)
+    .join('\n')
+
+  return `${base}
+
+---
+用户历史反馈（请参考以下内容优化行程安排和预算估算）：
+${feedbackSection}`
+}
+
+export function buildUserPrompt(req: GenerateRequest): string {
+  return `目的地：${req.destination}
+出发日期：${req.start_date}
+旅行天数：${req.days} 天
+总预算：¥${req.budget} 元
+
+请生成详细旅游攻略。`
+}
+```
+
+- [ ] **Step 4: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/lib/prompt.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 5: 实现 `lib/gemini.ts`**
+
+创建 `lib/gemini.ts`：
+```typescript
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { buildSystemPrompt, buildUserPrompt } from './prompt'
+import type { GenerateRequest, ItineraryContent, ItineraryReview } from './types'
+
+function getClient() {
+  return new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+}
+
+export async function* streamItinerary(
+  request: GenerateRequest,
+  priorReviews: ItineraryReview[]
+): AsyncGenerator<string> {
+  const genAI = getClient()
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    systemInstruction: buildSystemPrompt(priorReviews),
+  })
+
+  const result = await model.generateContentStream(buildUserPrompt(request))
+
+  for await (const chunk of result.stream) {
+    const text = chunk.text()
+    if (text) yield text
+  }
+}
+
+export function parseItineraryContent(raw: string): ItineraryContent {
+  const jsonMatch = raw.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error('No JSON found in Gemini response')
+  return JSON.parse(jsonMatch[0]) as ItineraryContent
+}
+```
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add lib/gemini.ts lib/prompt.ts __tests__/lib/prompt.test.ts
+git commit -m "feat: add Gemini streaming client and prompt builder"
+```
+
+---
+
+## Task 6: `/api/generate` SSE 端点
+
+**Files:**
+- Create: `app/api/generate/route.ts`
+- Create: `__tests__/api/generate.test.ts`
+
+- [ ] **Step 1: 编写生成接口测试**
+
+创建 `__tests__/api/generate.test.ts`：
+```typescript
+import { POST } from '@/app/api/generate/route'
+import { NextRequest } from 'next/server'
+
+jest.mock('@/lib/gemini', () => ({
+  streamItinerary: jest.fn(async function* () {
+    yield '{"summary":"test","days":[],"budget_breakdown":{"transport":1000,"accommodation":1000,"food":500,"tickets":300,"misc":200},"tips":["tip1"],"xhs_queries":["query1"]}'
+  }),
+  parseItineraryContent: jest.fn((raw: string) => JSON.parse(raw)),
+}))
+
+jest.mock('@/lib/youtube', () => ({
+  searchYoutubeVideos: jest.fn().mockResolvedValue([
+    { id: 'v1', title: '京都攻略', thumbnail: 'http://img.example.com/t.jpg', url: 'https://youtube.com/watch?v=v1' },
+  ]),
+}))
+
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: jest.fn().mockResolvedValue({
+    auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+    from: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+    }),
+  }),
+}))
+
+describe('POST /api/generate', () => {
+  it('returns 400 for missing fields', async () => {
+    const req = new NextRequest('http://localhost/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({ destination: '京都' }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
+  })
+
+  it('returns SSE stream for valid request', async () => {
+    const req = new NextRequest('http://localhost/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({ destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000 }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/event-stream')
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/api/generate.test.ts --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `app/api/generate/route.ts`**
+
+创建 `app/api/generate/route.ts`：
+```typescript
+import { NextRequest } from 'next/server'
+import { streamItinerary, parseItineraryContent } from '@/lib/gemini'
+import { searchYoutubeVideos } from '@/lib/youtube'
+import { createClient } from '@/lib/supabase/server'
+import type { GenerateRequest, ItineraryReview } from '@/lib/types'
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  const { destination, start_date, days, budget } = body as GenerateRequest
+
+  if (!destination || !start_date || !days || !budget) {
+    return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  let priorReviews: ItineraryReview[] = []
+  if (user) {
+    const { data } = await supabase
+      .from('itinerary_reviews')
+      .select(`*, itineraries!inner(destination, user_id)`)
+      .eq('itineraries.user_id', user.id)
+      .eq('itineraries.destination', destination)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    priorReviews = data ?? []
+  }
+
+  const encoder = new TextEncoder()
+  const [youtubeVideos, stream] = await Promise.all([
+    searchYoutubeVideos(destination),
+    (async () => streamItinerary({ destination, start_date, days, budget }, priorReviews))(),
+  ])
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      let fullText = ''
+      try {
+        for await (const chunk of stream) {
+          fullText += chunk
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`))
+        }
+        const content = parseItineraryContent(fullText)
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: 'done', content, youtube_videos: youtubeVideos })}\n\n`)
+        )
+      } catch (error) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Generation failed' })}\n\n`)
+        )
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(readableStream, {
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    },
+  })
+}
+```
+
+- [ ] **Step 4: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/api/generate.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add app/api/generate/ __tests__/api/generate.test.ts
+git commit -m "feat: add SSE generate API endpoint"
+```
+
+---
+
+## Task 7: 攻略 CRUD API
+
+**Files:**
+- Create: `app/api/itineraries/route.ts`
+- Create: `app/api/itineraries/[id]/route.ts`
+- Create: `__tests__/api/itineraries.test.ts`
+
+- [ ] **Step 1: 编写攻略 CRUD 测试**
+
+创建 `__tests__/api/itineraries.test.ts`：
+```typescript
+import { GET, POST } from '@/app/api/itineraries/route'
+import { GET as GET_DETAIL, DELETE } from '@/app/api/itineraries/[id]/route'
+import { NextRequest } from 'next/server'
+
+const mockItinerary = {
+  id: 'itin-1',
+  user_id: 'user-1',
+  destination: '京都',
+  start_date: '2025-06-15',
+  days: 5,
+  budget: 8000,
+  content: {},
+  youtube_videos: [],
+  created_at: '2025-05-08T00:00:00Z',
+}
+
+function makeMockSupabase(overrides = {}) {
+  return {
+    auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+    from: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      insert: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: mockItinerary, error: null }),
+      ...overrides,
+    }),
+  }
+}
+
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: jest.fn(),
+}))
+
+import { createClient } from '@/lib/supabase/server'
+
+describe('GET /api/itineraries', () => {
+  it('returns 401 when not authenticated', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+    })
+    const req = new NextRequest('http://localhost/api/itineraries')
+    const res = await GET(req)
+    expect(res.status).toBe(401)
+  })
+
+  it('returns itineraries for authenticated user', async () => {
+    const mock = makeMockSupabase()
+    mock.from.mockReturnValue({
+      ...mock.from(),
+      limit: jest.fn().mockResolvedValue({ data: [mockItinerary], error: null }),
+    })
+    ;(createClient as jest.Mock).mockResolvedValue(mock)
+    const req = new NextRequest('http://localhost/api/itineraries')
+    const res = await GET(req)
+    expect(res.status).toBe(200)
+  })
+})
+
+describe('DELETE /api/itineraries/[id]', () => {
+  it('returns 401 when not authenticated', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+    })
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1')
+    const res = await DELETE(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(401)
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/api/itineraries.test.ts --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `app/api/itineraries/route.ts`**
+
+创建 `app/api/itineraries/route.ts`：
+```typescript
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+export async function GET(_request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data, error } = await supabase
+    .from('itineraries')
+    .select('id, destination, start_date, days, budget, created_at, itinerary_reviews(id)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ itineraries: data })
+}
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const { destination, start_date, days, budget, content, youtube_videos } = body
+
+  if (!destination || !start_date || !days || !budget || !content) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('itineraries')
+    .insert({ user_id: user.id, destination, start_date, days, budget, content, youtube_videos: youtube_videos ?? [] })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ itinerary: data }, { status: 201 })
+}
+```
+
+- [ ] **Step 4: 实现 `app/api/itineraries/[id]/route.ts`**
+
+创建 `app/api/itineraries/[id]/route.ts`：
+```typescript
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+type Params = { params: Promise<{ id: string }> }
+
+export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data, error } = await supabase
+    .from('itineraries')
+    .select('*, itinerary_reviews(*)')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json({ itinerary: data })
+}
+
+export async function DELETE(_request: NextRequest, { params }: Params) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { error } = await supabase
+    .from('itineraries')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return new NextResponse(null, { status: 204 })
+}
+```
+
+- [ ] **Step 5: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/api/itineraries.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add app/api/itineraries/ __tests__/api/itineraries.test.ts
+git commit -m "feat: add itineraries CRUD API"
+```
+
+---
+
+## Task 8: 反馈 API
+
+**Files:**
+- Create: `app/api/itineraries/[id]/review/route.ts`
+- Create: `__tests__/api/review.test.ts`
+
+- [ ] **Step 1: 编写反馈接口测试**
+
+创建 `__tests__/api/review.test.ts`：
+```typescript
+import { POST, PATCH } from '@/app/api/itineraries/[id]/review/route'
+import { NextRequest } from 'next/server'
+
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: jest.fn(),
+}))
+
+import { createClient } from '@/lib/supabase/server'
+
+const validBody = {
+  rating: 4,
+  actual_budget: 9200,
+  highlights: '伏见稻荷早上很美',
+  improvements: '行程太赶',
+  visited_at: '2025-06-20',
+}
+
+describe('POST /api/itineraries/[id]/review', () => {
+  it('returns 401 when unauthenticated', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+    })
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1/review', {
+      method: 'POST',
+      body: JSON.stringify(validBody),
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 400 for invalid rating', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+    })
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1/review', {
+      method: 'POST',
+      body: JSON.stringify({ ...validBody, rating: 6 }),
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(400)
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/api/review.test.ts --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `app/api/itineraries/[id]/review/route.ts`**
+
+创建 `app/api/itineraries/[id]/review/route.ts`：
+```typescript
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+
+type Params = { params: Promise<{ id: string }> }
+
+export async function POST(request: NextRequest, { params }: Params) {
+  const { id: itinerary_id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const { rating, actual_budget, highlights, improvements, visited_at } = body
+
+  if (!rating || rating < 1 || rating > 5) {
+    return NextResponse.json({ error: 'rating must be 1-5' }, { status: 400 })
+  }
+  if (!actual_budget || actual_budget <= 0) {
+    return NextResponse.json({ error: 'actual_budget must be positive' }, { status: 400 })
+  }
+  if (!visited_at) {
+    return NextResponse.json({ error: 'visited_at required' }, { status: 400 })
+  }
+
+  const { data, error } = await supabase
+    .from('itinerary_reviews')
+    .insert({
+      itinerary_id,
+      user_id: user.id,
+      rating,
+      actual_budget,
+      highlights: highlights ?? '',
+      improvements: improvements ?? '',
+      visited_at,
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ review: data }, { status: 201 })
+}
+
+export async function PATCH(request: NextRequest, { params }: Params) {
+  const { id: itinerary_id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const { rating, actual_budget, highlights, improvements, visited_at } = body
+
+  if (rating !== undefined && (rating < 1 || rating > 5)) {
+    return NextResponse.json({ error: 'rating must be 1-5' }, { status: 400 })
+  }
+
+  const updates: Record<string, unknown> = {}
+  if (rating !== undefined) updates.rating = rating
+  if (actual_budget !== undefined) updates.actual_budget = actual_budget
+  if (highlights !== undefined) updates.highlights = highlights
+  if (improvements !== undefined) updates.improvements = improvements
+  if (visited_at !== undefined) updates.visited_at = visited_at
+
+  const { data, error } = await supabase
+    .from('itinerary_reviews')
+    .update(updates)
+    .eq('itinerary_id', itinerary_id)
+    .eq('user_id', user.id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ review: data })
+}
+```
+
+- [ ] **Step 4: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/api/review.test.ts --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add app/api/itineraries/[id]/review/ __tests__/api/review.test.ts
+git commit -m "feat: add review POST and PATCH API"
+```
+
+---
+
+## Task 9: 根布局 + Auth 集成
+
+**Files:**
+- Create: `app/layout.tsx`
+- Create: `app/globals.css`（更新）
+- Create: `components/Navbar.tsx`
+
+- [ ] **Step 1: 更新根布局**
+
+创建/替换 `app/layout.tsx`：
+```tsx
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import Navbar from '@/components/Navbar'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
+  title: 'TravelAI — AI 旅游攻略生成',
+  description: '输入目的地，AI 为你生成完整旅游攻略',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="zh">
+      <body className={`${inter.className} bg-slate-50 min-h-screen`}>
+        <Navbar />
+        <main>{children}</main>
+      </body>
+    </html>
+  )
+}
+```
+
+- [ ] **Step 2: 创建 Navbar 组件**
+
+创建 `components/Navbar.tsx`：
+```tsx
+'use client'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
+
+export default function Navbar() {
+  const [user, setUser] = useState<User | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }
+
+  return (
+    <nav className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center">
+      <Link href="/" className="font-extrabold text-indigo-500 text-lg">✈️ TravelAI</Link>
+      <div className="flex items-center gap-6 text-sm text-slate-500">
+        <Link href="/">发现</Link>
+        {user && <Link href="/itineraries">我的攻略</Link>}
+        {user ? (
+          <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600">退出</button>
+        ) : (
+          <button
+            onClick={handleLogin}
+            className="bg-indigo-500 text-white px-4 py-1.5 rounded-lg font-semibold hover:bg-indigo-600 transition-colors"
+          >
+            登录
+          </button>
+        )}
+      </div>
+    </nav>
+  )
+}
+```
+
+- [ ] **Step 3: 创建 Auth 回调路由**
+
+创建 `app/auth/callback/route.ts`：
+```typescript
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const { searchParams, origin } = new URL(request.url)
+  const code = searchParams.get('code')
+  if (code) {
+    const supabase = await createClient()
+    await supabase.auth.exchangeCodeForSession(code)
+  }
+  return NextResponse.redirect(origin)
+}
+```
+
+- [ ] **Step 4: 启动开发服务器验证 Navbar 和登录流程**
+
+```bash
+npm run dev
+```
+
+打开 http://localhost:3000，点击「登录」，确认跳转 Google OAuth 页面。
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add app/layout.tsx app/globals.css app/auth/ components/Navbar.tsx
+git commit -m "feat: add root layout, Navbar, and Supabase OAuth callback"
+```
+
+---
+
+## Task 10: 首页（SearchForm）
+
+**Files:**
+- Create: `components/SearchForm.tsx`
+- Modify: `app/page.tsx`
+- Create: `__tests__/components/SearchForm.test.tsx`
+
+- [ ] **Step 1: 编写 SearchForm 组件测试**
+
+创建 `__tests__/components/SearchForm.test.tsx`：
+```tsx
+import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import SearchForm from '@/components/SearchForm'
+
+describe('SearchForm', () => {
+  it('renders all input fields', () => {
+    render(<SearchForm />)
+    expect(screen.getByPlaceholderText(/目的地/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/旅行天数/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/总预算/i)).toBeInTheDocument()
+  })
+
+  it('submit button is disabled when fields are empty', () => {
+    render(<SearchForm />)
+    expect(screen.getByRole('button', { name: /生成攻略/i })).toBeDisabled()
+  })
+
+  it('submit button enables when all fields filled', async () => {
+    const user = userEvent.setup()
+    render(<SearchForm />)
+    await user.type(screen.getByPlaceholderText(/目的地/i), '京都')
+    await user.type(screen.getByLabelText(/旅行天数/i), '5')
+    await user.type(screen.getByLabelText(/总预算/i), '8000')
+    const dateInput = screen.getByLabelText(/出发日期/i)
+    await user.type(dateInput, '2025-06-15')
+    expect(screen.getByRole('button', { name: /生成攻略/i })).toBeEnabled()
+  })
+})
+```
+
+- [ ] **Step 2: 运行测试，确认失败**
+
+```bash
+npx jest __tests__/components/SearchForm.test.tsx --no-coverage
+```
+
+预期：FAIL
+
+- [ ] **Step 3: 实现 `components/SearchForm.tsx`**
+
+创建 `components/SearchForm.tsx`：
+```tsx
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+
+const POPULAR = ['日本', '欧洲', '东南亚', '国内']
+
+export default function SearchForm() {
+  const router = useRouter()
+  const [form, setForm] = useState({ destination: '', start_date: '', days: '', budget: '' })
+
+  const isValid = form.destination && form.start_date && Number(form.days) > 0 && Number(form.budget) > 0
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const params = new URLSearchParams({
+      destination: form.destination,
+      start_date: form.start_date,
+      days: form.days,
+      budget: form.budget,
+    })
+    router.push(`/generate?${params}`)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl mx-auto">
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="col-span-2 flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">📍 目的地</label>
+          <input
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            placeholder="目的地（如：京都、巴黎）"
+            value={form.destination}
+            onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="start_date" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">📅 出发日期</label>
+          <input
+            id="start_date"
+            type="date"
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            value={form.start_date}
+            onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="days" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">🌙 旅行天数</label>
+          <input
+            id="days"
+            type="number"
+            min={1}
+            max={30}
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            placeholder="天"
+            value={form.days}
+            onChange={e => setForm(f => ({ ...f, days: e.target.value }))}
+          />
+        </div>
+        <div className="col-span-2 flex flex-col gap-1">
+          <label htmlFor="budget" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">💰 总预算（元）</label>
+          <input
+            id="budget"
+            type="number"
+            min={100}
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            placeholder="¥"
+            value={form.budget}
+            onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
+          />
+        </div>
+      </div>
+      <button
+        type="submit"
+        disabled={!isValid}
+        className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg transition-all"
+      >
+        🚀 立即生成专属攻略
+      </button>
+    </form>
+  )
+}
+```
+
+- [ ] **Step 4: 实现首页 `app/page.tsx`**
+
+```tsx
+import SearchForm from '@/components/SearchForm'
+
+const POPULAR = ['🗾 日本', '🇫🇷 欧洲', '🌴 东南亚', '🏔️ 国内']
+
+export default function Home() {
+  return (
+    <div
+      className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center px-4"
+      style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 40%, #f093fb 100%)' }}
+    >
+      <div className="relative z-10 text-center mb-8">
+        <span className="inline-block bg-white/20 text-white text-sm px-4 py-1 rounded-full mb-4 backdrop-blur">
+          ✨ AI 旅行规划师
+        </span>
+        <h1 className="text-4xl font-extrabold text-white mb-2">发现你的下一次旅行</h1>
+        <p className="text-white/80">输入目的地、时间与预算，AI 为你生成专属攻略</p>
+      </div>
+      <SearchForm />
+      <div className="flex gap-3 mt-6 flex-wrap justify-center">
+        {POPULAR.map(tag => (
+          <span key={tag} className="bg-white/20 text-white text-sm px-4 py-1.5 rounded-full border border-white/30 cursor-pointer hover:bg-white/30 transition-colors">
+            {tag}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 5: 运行测试，确认通过**
+
+```bash
+npx jest __tests__/components/SearchForm.test.tsx --no-coverage
+```
+
+预期：PASS
+
+- [ ] **Step 6: 在浏览器中验证首页**
+
+```bash
+npm run dev
+```
+
+打开 http://localhost:3000，确认 Hero 区渐变背景、搜索卡片、热门标签都正常显示。
+
+- [ ] **Step 7: 提交**
+
+```bash
+git add app/page.tsx components/SearchForm.tsx __tests__/components/SearchForm.test.tsx
+git commit -m "feat: add home page with SearchForm"
+```
+
+---
+
+## Task 11: 攻略生成页（SSE 流式输出）
+
+**Files:**
+- Create: `components/YoutubeCard.tsx`
+- Create: `components/ItineraryStream.tsx`
+- Create: `app/generate/page.tsx`
+
+- [ ] **Step 1: 实现 `components/YoutubeCard.tsx`**
+
+创建 `components/YoutubeCard.tsx`：
+```tsx
+import type { YoutubeVideo } from '@/lib/types'
+
+export default function YoutubeCard({ video }: { video: YoutubeVideo }) {
+  return (
+    <a href={video.url} target="_blank" rel="noopener noreferrer"
+      className="flex gap-2 bg-white rounded-lg p-2 shadow-sm hover:shadow-md transition-shadow">
+      <img src={video.thumbnail} alt={video.title} className="w-16 h-12 object-cover rounded" />
+      <p className="text-xs text-slate-600 line-clamp-2 flex-1">{video.title}</p>
+    </a>
+  )
+}
+```
+
+- [ ] **Step 2: 实现 `components/ItineraryStream.tsx`**
+
+创建 `components/ItineraryStream.tsx`：
+```tsx
+'use client'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import YoutubeCard from './YoutubeCard'
+import { createClient } from '@/lib/supabase/client'
+import type { ItineraryContent, YoutubeVideo } from '@/lib/types'
+
+interface StreamState {
+  chunks: string
+  content: ItineraryContent | null
+  videos: YoutubeVideo[]
+  done: boolean
+  error: string | null
+  progress: number
+}
+
+export default function ItineraryStream() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [state, setState] = useState<StreamState>({
+    chunks: '', content: null, videos: [], done: false, error: null, progress: 0,
+  })
+  const [saving, setSaving] = useState(false)
+  const hasFetched = useRef(false)
+
+  const destination = searchParams.get('destination') ?? ''
+  const start_date = searchParams.get('start_date') ?? ''
+  const days = Number(searchParams.get('days') ?? 1)
+  const budget = Number(searchParams.get('budget') ?? 0)
+
+  useEffect(() => {
+    if (hasFetched.current || !destination) return
+    hasFetched.current = true
+
+    async function generate() {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ destination, start_date, days, budget }),
+      })
+      if (!res.body) return
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const json = JSON.parse(line.slice(6))
+          if (json.type === 'chunk') {
+            setState(s => ({ ...s, chunks: s.chunks + json.text, progress: Math.min(s.progress + 5, 90) }))
+          } else if (json.type === 'done') {
+            setState(s => ({ ...s, content: json.content, videos: json.youtube_videos, done: true, progress: 100 }))
+          } else if (json.type === 'error') {
+            setState(s => ({ ...s, error: json.message, done: true }))
+          }
+        }
+      }
+    }
+    generate()
+  }, [destination, start_date, days, budget])
+
+  const handleSave = async () => {
+    if (!state.content) return
+    setSaving(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { alert('请先登录'); setSaving(false); return }
+
+    const res = await fetch('/api/itineraries', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ destination, start_date, days, budget, content: state.content, youtube_videos: state.videos }),
+    })
+    if (res.ok) {
+      const { itinerary } = await res.json()
+      router.push(`/itineraries/${itinerary.id}`)
+    } else {
+      alert('保存失败，请重试')
+      setSaving(false)
+    }
+  }
+
+  if (state.error) {
+    return (
+      <div className="text-center py-20 text-red-500">
+        <p>生成失败：{state.error}</p>
+        <button onClick={() => window.history.back()} className="mt-4 text-indigo-500 underline">返回重试</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="flex items-center gap-3 mb-6">
+        <span className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-1.5 rounded-full text-sm font-bold">
+          📍 {destination} · {days}天 · ¥{budget.toLocaleString()}
+        </span>
+        {state.done && (
+          <button onClick={handleSave} disabled={saving}
+            className="ml-auto bg-emerald-500 text-white px-4 py-1.5 rounded-full text-sm font-bold hover:bg-emerald-600 disabled:opacity-50">
+            {saving ? '保存中...' : '💾 保存攻略'}
+          </button>
+        )}
+      </div>
+
+      <div className="w-full bg-slate-200 rounded-full h-1 mb-6">
+        <div className="bg-gradient-to-r from-indigo-500 to-purple-600 h-1 rounded-full transition-all duration-300"
+          style={{ width: `${state.progress}%` }} />
+      </div>
+
+      <div className="grid grid-cols-[1fr_280px] gap-6">
+        <div>
+          {state.content ? (
+            <div className="space-y-4">
+              <p className="text-slate-600 bg-indigo-50 p-4 rounded-xl">{state.content.summary}</p>
+              {state.content.days.map((day, i) => (
+                <div key={i} className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-indigo-400">
+                  <h3 className="font-bold text-slate-800 mb-2">{day.title}</h3>
+                  <ul className="space-y-1">
+                    {day.activities.map((act, j) => (
+                      <li key={j} className="text-sm text-slate-600">{act}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-purple-300">
+              <pre className="text-sm text-slate-600 whitespace-pre-wrap font-sans">
+                {state.chunks}
+                {!state.done && <span className="inline-block w-0.5 h-4 bg-purple-400 animate-pulse ml-0.5 align-middle" />}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          {state.videos.length > 0 && (
+            <div>
+              <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">📹 相关视频</h4>
+              <div className="space-y-2">
+                {state.videos.map(v => <YoutubeCard key={v.id} video={v} />)}
+              </div>
+            </div>
+          )}
+          <div>
+            <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">🔗 小红书参考</h4>
+            {state.content?.xhs_queries.map((q, i) => (
+              <a key={i}
+                href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(q)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-2 hover:bg-red-100">
+                📌 搜索「{q}」
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 3: 实现 `app/generate/page.tsx`**
+
+创建 `app/generate/page.tsx`：
+```tsx
+import { Suspense } from 'react'
+import ItineraryStream from '@/components/ItineraryStream'
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={<div className="text-center py-20 text-slate-400">加载中...</div>}>
+      <ItineraryStream />
+    </Suspense>
+  )
+}
+```
+
+- [ ] **Step 4: 端对端验证**
+
+```bash
+npm run dev
+```
+
+1. 打开 http://localhost:3000，填写表单（目的地：京都，5天，¥8000）
+2. 点击「立即生成专属攻略」
+3. 确认跳转到 /generate 页面
+4. 确认 AI 内容流式逐步显示，进度条推进
+5. 生成完成后确认「保存攻略」按钮出现
+
+- [ ] **Step 5: 提交**
+
+```bash
+git add app/generate/ components/ItineraryStream.tsx components/YoutubeCard.tsx
+git commit -m "feat: add generate page with SSE streaming"
+```
+
+---
+
+## Task 12: 历史列表页 + 详情页
+
+**Files:**
+- Create: `components/ItineraryCard.tsx`
+- Create: `app/itineraries/page.tsx`
+- Create: `components/ItineraryDetail.tsx`
+- Create: `app/itineraries/[id]/page.tsx`
+
+- [ ] **Step 1: 实现 `components/ItineraryCard.tsx`**
+
+创建 `components/ItineraryCard.tsx`：
+```tsx
+import Link from 'next/link'
+
+const GRADIENTS = [
+  'from-indigo-500 to-purple-600',
+  'from-emerald-500 to-teal-500',
+  'from-pink-500 to-rose-500',
+  'from-amber-500 to-orange-500',
+]
+
+interface Props {
+  itinerary: {
+    id: string
+    destination: string
+    start_date: string
+    days: number
+    budget: number
+    created_at: string
+    itinerary_reviews: { id: string }[]
+  }
+  index: number
+}
+
+export default function ItineraryCard({ itinerary, index }: Props) {
+  const gradient = GRADIENTS[index % GRADIENTS.length]
+  const hasReview = itinerary.itinerary_reviews?.length > 0
+  const tripEndDate = new Date(itinerary.start_date)
+  tripEndDate.setDate(tripEndDate.getDate() + itinerary.days)
+  const tripEnded = new Date() > tripEndDate
+
+  return (
+    <Link href={`/itineraries/${itinerary.id}`}
+      className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+      <div className={`bg-gradient-to-br ${gradient} p-4 text-white`}>
+        <p className="font-bold text-base">🗺️ {itinerary.destination}</p>
+        <p className="text-xs opacity-85 mt-1">{itinerary.days}天 · {itinerary.start_date} 出发</p>
+      </div>
+      <div className="p-3 flex justify-between items-center">
+        <span className="text-xs text-slate-400">{new Date(itinerary.created_at).toLocaleDateString('zh-CN')}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-indigo-500">¥{itinerary.budget.toLocaleString()}</span>
+          {hasReview && <span className="text-xs bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">已反馈</span>}
+          {!hasReview && tripEnded && <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">待反馈</span>}
+        </div>
+      </div>
+    </Link>
+  )
+}
+```
+
+- [ ] **Step 2: 实现历史列表页 `app/itineraries/page.tsx`**
+
+创建 `app/itineraries/page.tsx`：
+```tsx
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import ItineraryCard from '@/components/ItineraryCard'
+import Link from 'next/link'
+
+export default async function ItinerariesPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/')
+
+  const { data: itineraries } = await supabase
+    .from('itineraries')
+    .select('id, destination, start_date, days, budget, created_at, itinerary_reviews(id)')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8">
+      <h1 className="text-xl font-bold text-slate-800 mb-6">我的攻略记录</h1>
+      <div className="grid grid-cols-2 gap-4">
+        {itineraries?.map((it, i) => (
+          <ItineraryCard key={it.id} itinerary={it as any} index={i} />
+        ))}
+        <Link href="/"
+          className="border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center min-h-[100px] text-slate-400 hover:border-indigo-300 hover:text-indigo-400 transition-colors">
+          <span className="text-3xl mb-1">+</span>
+          <span className="text-sm">新建攻略</span>
+        </Link>
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 3: 实现 `components/ItineraryDetail.tsx`**
+
+创建 `components/ItineraryDetail.tsx`：
+```tsx
+'use client'
+import { useState } from 'react'
+import YoutubeCard from './YoutubeCard'
+import type { Itinerary, ItineraryReview } from '@/lib/types'
+
+type Tab = 'itinerary' | 'budget' | 'tips' | 'videos'
+
+interface Props {
+  itinerary: Itinerary & { itinerary_reviews: ItineraryReview[] }
+}
+
+export default function ItineraryDetail({ itinerary }: Props) {
+  const [tab, setTab] = useState<Tab>('itinerary')
+  const review = itinerary.itinerary_reviews?.[0]
+  const { content, youtube_videos } = itinerary
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'itinerary', label: '📅 行程' },
+    { key: 'budget', label: '💰 预算' },
+    { key: 'tips', label: '💡 贴士' },
+    { key: 'videos', label: '📹 视频' },
+  ]
+
+  return (
+    <div>
+      <div className="flex border-b border-slate-100 bg-white">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-6">
+        {tab === 'itinerary' && (
+          <div className="space-y-4">
+            <p className="text-slate-600 bg-indigo-50 p-4 rounded-xl">{content.summary}</p>
+            {content.days.map((day, i) => (
+              <div key={i} className="bg-slate-50 rounded-xl p-4 border-l-4 border-indigo-400">
+                <h3 className="font-bold text-slate-800 mb-2">{day.title}</h3>
+                <ul className="space-y-1">
+                  {day.activities.map((act, j) => <li key={j} className="text-sm text-slate-600">{act}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'budget' && (
+          <div>
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-100">
+                <th className="text-left text-xs text-slate-400 uppercase py-2">类别</th>
+                <th className="text-right text-xs text-slate-400 uppercase py-2">计划金额</th>
+                {review && <th className="text-right text-xs text-slate-400 uppercase py-2">实际金额</th>}
+              </tr></thead>
+              <tbody>
+                {[
+                  ['✈️ 交通', content.budget_breakdown.transport],
+                  ['🏨 住宿', content.budget_breakdown.accommodation],
+                  ['🍱 餐饮', content.budget_breakdown.food],
+                  ['🎭 景点', content.budget_breakdown.tickets],
+                  ['🛍️ 其他', content.budget_breakdown.misc],
+                ].map(([label, amount]) => (
+                  <tr key={label as string} className="border-b border-slate-50">
+                    <td className="py-2.5 text-slate-700">{label}</td>
+                    <td className="py-2.5 text-right text-slate-600">¥{(amount as number).toLocaleString()}</td>
+                    {review && <td className="py-2.5 text-right text-slate-400">—</td>}
+                  </tr>
+                ))}
+                <tr className="font-bold">
+                  <td className="pt-3 text-slate-800">合计</td>
+                  <td className="pt-3 text-right text-indigo-600">¥{itinerary.budget.toLocaleString()}</td>
+                  {review && <td className="pt-3 text-right text-rose-500">¥{review.actual_budget.toLocaleString()}</td>}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {tab === 'tips' && (
+          <ul className="space-y-3">
+            {content.tips.map((tip, i) => (
+              <li key={i} className="flex gap-3 text-sm text-slate-600">
+                <span className="text-indigo-400 font-bold">#{i + 1}</span>
+                {tip}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {tab === 'videos' && (
+          <div className="space-y-3">
+            {youtube_videos.length > 0
+              ? youtube_videos.map(v => <YoutubeCard key={v.id} video={v} />)
+              : <p className="text-slate-400 text-sm">暂无相关视频</p>}
+            <div className="mt-4">
+              <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">🔗 小红书参考</h4>
+              {content.xhs_queries.map((q, i) => (
+                <a key={i}
+                  href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(q)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-2 hover:bg-red-100">
+                  📌 搜索「{q}」
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 4: 实现详情页 `app/itineraries/[id]/page.tsx`（Task 13 会替换为 Client Component）**
+
+创建 `app/itineraries/[id]/page.tsx`：
+```tsx
+import { createClient } from '@/lib/supabase/server'
+import { notFound, redirect } from 'next/navigation'
+import ItineraryDetail from '@/components/ItineraryDetail'
+
+export default async function ItineraryPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/')
+
+  const { data } = await supabase
+    .from('itineraries')
+    .select('*, itinerary_reviews(*)')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!data) notFound()
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-0">
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6">
+        <h1 className="text-xl font-extrabold">🗺️ {data.destination} · {data.days}天</h1>
+        <p className="text-sm opacity-85 mt-1">{data.start_date} 出发 · 预算 ¥{data.budget.toLocaleString()}</p>
+      </div>
+      <div className="bg-white rounded-b-xl shadow">
+        <ItineraryDetail itinerary={data as any} />
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 5: 浏览器验证**
+
+```bash
+npm run dev
+```
+
+1. 登录后生成并保存一条攻略
+2. 确认跳转到详情页，四个 Tab 均可切换
+3. 确认历史列表页显示已保存的攻略
+
+- [ ] **Step 6: 提交**
+
+```bash
+git add app/itineraries/ components/ItineraryCard.tsx components/ItineraryDetail.tsx
+git commit -m "feat: add history list and itinerary detail pages"
+```
+
+---
+
+## Task 13: 反馈 Modal
+
+**Files:**
+- Create: `components/ReviewModal.tsx`
+- Modify: `app/itineraries/[id]/page.tsx`（添加反馈入口）
+
+- [ ] **Step 1: 实现 `components/ReviewModal.tsx`**
+
+创建 `components/ReviewModal.tsx`：
+```tsx
+'use client'
+import { useState } from 'react'
+
+interface Props {
+  itineraryId: string
+  existingReview?: {
+    id: string
+    rating: number
+    actual_budget: number
+    highlights: string
+    improvements: string
+    visited_at: string
+  }
+  onClose: () => void
+  onSaved: () => void
+}
+
+export default function ReviewModal({ itineraryId, existingReview, onClose, onSaved }: Props) {
+  const [form, setForm] = useState({
+    rating: existingReview?.rating ?? 0,
+    actual_budget: existingReview?.actual_budget ?? '',
+    highlights: existingReview?.highlights ?? '',
+    improvements: existingReview?.improvements ?? '',
+    visited_at: existingReview?.visited_at ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  const isEdit = !!existingReview
+  const isValid = form.rating > 0 && Number(form.actual_budget) > 0 && form.visited_at
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    const url = `/api/itineraries/${itineraryId}/review`
+    const method = isEdit ? 'PATCH' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...form, actual_budget: Number(form.actual_budget) }),
+    })
+    if (res.ok) {
+      onSaved()
+      onClose()
+    } else {
+      alert('保存失败，请重试')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="bg-gradient-to-r from-pink-500 to-rose-500 p-5 text-white rounded-t-2xl">
+          <h2 className="font-bold text-lg">✍️ 旅行后感受如何？</h2>
+          <p className="text-sm opacity-90 mt-1">{isEdit ? '修改你的反馈' : '分享你的旅行体验'}</p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-2">整体评分</label>
+            <div className="flex gap-2">
+              {[1,2,3,4,5].map(n => (
+                <button key={n} type="button" onClick={() => setForm(f => ({ ...f, rating: n }))}
+                  className={`text-2xl transition-transform hover:scale-110 ${n <= form.rating ? 'opacity-100' : 'opacity-30'}`}>
+                  ⭐
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">实际花费（元）</label>
+            <input type="number" min={1}
+              className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-pink-400 focus:outline-none"
+              placeholder="¥"
+              value={form.actual_budget}
+              onChange={e => setForm(f => ({ ...f, actual_budget: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">旅行日期</label>
+            <input type="date"
+              className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-pink-400 focus:outline-none"
+              value={form.visited_at}
+              onChange={e => setForm(f => ({ ...f, visited_at: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">✨ 旅行亮点</label>
+            <textarea rows={2}
+              className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-pink-400 focus:outline-none resize-none"
+              placeholder="哪些地方超出预期？"
+              value={form.highlights}
+              onChange={e => setForm(f => ({ ...f, highlights: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">🔧 改进建议</label>
+            <textarea rows={2}
+              className="w-full border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-pink-400 focus:outline-none resize-none"
+              placeholder="哪些安排需要调整？"
+              value={form.improvements}
+              onChange={e => setForm(f => ({ ...f, improvements: e.target.value }))}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose}
+              className="flex-1 border-2 border-slate-200 text-slate-500 rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-50">
+              取消
+            </button>
+            <button type="submit" disabled={!isValid || saving}
+              className="flex-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-40">
+              {saving ? '保存中...' : '📬 提交反馈'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: 在详情页添加反馈入口**
+
+修改 `app/itineraries/[id]/page.tsx`，将 `ItineraryPage` 组件改为 Client Component 以支持 Modal 状态：
+
+创建新文件 `app/itineraries/[id]/DetailClient.tsx`：
+```tsx
+'use client'
+import { useState } from 'react'
+import ItineraryDetail from '@/components/ItineraryDetail'
+import ReviewModal from '@/components/ReviewModal'
+import type { Itinerary, ItineraryReview } from '@/lib/types'
+
+interface Props {
+  itinerary: Itinerary & { itinerary_reviews: ItineraryReview[] }
+}
+
+export default function DetailClient({ itinerary }: Props) {
+  const [showModal, setShowModal] = useState(false)
+  const [review, setReview] = useState(itinerary.itinerary_reviews?.[0])
+
+  const tripEndDate = new Date(itinerary.start_date)
+  tripEndDate.setDate(tripEndDate.getDate() + itinerary.days)
+  const tripEnded = new Date() > tripEndDate
+
+  return (
+    <>
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-6 flex justify-between items-center">
+        <div>
+          <h1 className="text-xl font-extrabold">🗺️ {itinerary.destination} · {itinerary.days}天</h1>
+          <p className="text-sm opacity-85 mt-1">{itinerary.start_date} 出发 · 预算 ¥{itinerary.budget.toLocaleString()}</p>
+        </div>
+        <div className="flex gap-2">
+          {tripEnded && (
+            <button onClick={() => setShowModal(true)}
+              className="bg-white/20 text-white border border-white/40 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-white/30">
+              {review ? '修改反馈' : '✍️ 写反馈'}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="bg-white rounded-b-xl shadow">
+        <ItineraryDetail itinerary={{ ...itinerary, itinerary_reviews: review ? [review] : [] }} />
+      </div>
+      {showModal && (
+        <ReviewModal
+          itineraryId={itinerary.id}
+          existingReview={review}
+          onClose={() => setShowModal(false)}
+          onSaved={() => window.location.reload()}
+        />
+      )}
+    </>
+  )
+}
+```
+
+更新 `app/itineraries/[id]/page.tsx` 使用 `DetailClient`：
+```tsx
+import { createClient } from '@/lib/supabase/server'
+import { notFound, redirect } from 'next/navigation'
+import DetailClient from './DetailClient'
+
+export default async function ItineraryPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/')
+
+  const { data } = await supabase
+    .from('itineraries')
+    .select('*, itinerary_reviews(*)')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!data) notFound()
+  return <DetailClient itinerary={data as any} />
+}
+```
+
+- [ ] **Step 3: 浏览器验证反馈功能**
+
+```bash
+npm run dev
+```
+
+1. 打开一条攻略详情页
+2. 若 `start_date + days` 已过，顶部应出现「✍️ 写反馈」按钮
+3. 点击打开 Modal，填写信息，提交
+4. 确认页面刷新后预算 Tab 显示实际花费对比
+
+- [ ] **Step 4: 提交**
+
+```bash
+git add components/ReviewModal.tsx app/itineraries/[id]/DetailClient.tsx app/itineraries/[id]/page.tsx
+git commit -m "feat: add ReviewModal and feedback entry point"
+```
+
+---
+
+## Task 14: 部署到 Vercel
+
+**Files:**
+- 无新文件，配置环境变量
+
+- [ ] **Step 1: 全量测试通过**
+
+```bash
+npx jest --coverage
+```
+
+预期：所有测试 PASS，coverage > 70%（核心 lib/ 和 api/ 达到 80%+）
+
+- [ ] **Step 2: 构建验证**
+
+```bash
+npm run build
+```
+
+预期：build 成功，无 TypeScript 错误
+
+- [ ] **Step 3: 推送到 GitHub**
+
+```bash
+git add .
+git commit -m "chore: final pre-deploy cleanup"
+git remote add origin https://github.com/YOUR_USERNAME/travel-planner.git
+git push -u origin main
+```
+
+- [ ] **Step 4: Vercel 部署**
+
+1. 访问 [vercel.com](https://vercel.com)，导入 GitHub 仓库
+2. Framework Preset 选 **Next.js**
+3. 在 Environment Variables 中添加：
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `GEMINI_API_KEY`
+   - `YOUTUBE_API_KEY`
+4. 点击 Deploy
+
+- [ ] **Step 5: 更新 Supabase Auth 回调 URL**
+
+在 Supabase Dashboard → Authentication → URL Configuration，添加：
+```
+https://your-project.vercel.app/auth/callback
+```
+
+在 Google Cloud Console → OAuth 2.0，添加授权回调：
+```
+https://your-project.vercel.app/auth/callback
+https://YOUR_SUPABASE_PROJECT.supabase.co/auth/v1/callback
+```
+
+- [ ] **Step 6: 端到端线上验证**
+
+1. 打开生产 URL
+2. Google 登录
+3. 生成一条攻略
+4. 保存并查看详情
+5. 确认历史页显示
+
+---
+
+## 实施顺序总结
+
+```
+Task 1  → Task 2  → Task 3  → Task 4  → Task 5
+项目搭建  类型定义   DB+Auth   YouTube   Gemini+Prompt
+   ↓
+Task 6  → Task 7  → Task 8  → Task 9  → Task 10
+SSE接口  CRUD API  反馈API   布局+Auth  首页
+   ↓
+Task 11 → Task 12 → Task 13 → Task 14
+生成页   历史+详情  反馈Modal  部署
+```

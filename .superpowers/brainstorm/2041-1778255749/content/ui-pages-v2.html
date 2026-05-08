@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TravelAI UI 设计</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; color: #2d3748; }
+
+  .page-title { text-align:center; padding: 28px 20px 8px; font-size: 22px; font-weight: 700; color: #2d3748; }
+  .page-sub { text-align:center; color: #718096; font-size: 14px; margin-bottom: 24px; }
+
+  .screens { display: flex; flex-direction: column; gap: 40px; padding: 0 20px 40px; max-width: 860px; margin: 0 auto; }
+
+  .screen-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #a0aec0; margin-bottom: 10px; }
+
+  /* ── SCREEN FRAME ── */
+  .frame { border-radius: 16px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.10); border: 1px solid #e2e8f0; }
+  .frame-bar { background: #f7fafc; border-bottom: 1px solid #e2e8f0; padding: 10px 16px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── HOMEPAGE ── */
+  .hero {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 40%, #f093fb 100%);
+    padding: 48px 24px 56px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .hero-tag { display: inline-block; background: rgba(255,255,255,0.2); color: #fff; font-size: 12px; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; backdrop-filter: blur(4px); }
+  .hero-title { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .hero-sub { font-size: 14px; color: rgba(255,255,255,0.85); margin-bottom: 28px; }
+
+  .search-card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 24px 28px;
+    max-width: 600px;
+    margin: 0 auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    position: relative;
+  }
+  .search-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+  .field-group { display: flex; flex-direction: column; gap: 5px; }
+  .field-group label { font-size: 11px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; }
+  .field-input {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 13px;
+    color: #2d3748;
+    background: #f7fafc;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+  .field-input:focus { border-color: #667eea; background: #fff; }
+  .field-input.full { grid-column: 1 / -1; }
+
+  .btn-generate {
+    width: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 4px 14px rgba(102,126,234,0.45);
+  }
+
+  .popular-tags { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 16px; }
+  .tag { background: rgba(255,255,255,0.2); color: #fff; font-size: 12px; padding: 5px 12px; border-radius: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.3); }
+
+  /* ── NAV ── */
+  .nav { background: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #edf2f7; }
+  .nav-logo { font-weight: 800; font-size: 15px; color: #667eea; }
+  .nav-links { display: flex; gap: 20px; font-size: 13px; color: #718096; }
+  .nav-btn { background: #667eea; color: #fff; font-size: 12px; padding: 6px 14px; border-radius: 8px; font-weight: 600; }
+
+  /* ── GENERATE PAGE ── */
+  .gen-layout { display: grid; grid-template-columns: 1fr 300px; gap: 0; min-height: 340px; }
+  .gen-main { background: #fff; padding: 24px; border-right: 1px solid #edf2f7; }
+  .gen-sidebar { background: #f7fafc; padding: 18px; }
+  .dest-badge { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(90deg,#667eea,#764ba2); color: #fff; border-radius: 20px; padding: 5px 14px; font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+  .day-block { border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; font-size: 13px; }
+  .day-done { background: #ebf4ff; border-left: 3px solid #667eea; }
+  .day-streaming { background: #faf5ff; border-left: 3px solid #b794f4; opacity: 0.8; }
+  .day-title { font-weight: 700; color: #2d3748; font-size: 12px; margin-bottom: 3px; }
+  .day-content { color: #718096; font-size: 11px; line-height: 1.6; }
+  .cursor { display: inline-block; width: 2px; height: 12px; background: #b794f4; animation: blink 1s infinite; vertical-align: middle; margin-left: 2px; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  .progress-bar { height: 3px; background: #e2e8f0; border-radius: 2px; margin-bottom: 16px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg,#667eea,#764ba2); border-radius: 2px; width: 40%; }
+
+  .sidebar-title { font-size: 11px; font-weight: 700; color: #a0aec0; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px; }
+  .video-item { background: #fff; border-radius: 8px; padding: 8px; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .video-thumb { width: 48px; height: 34px; background: linear-gradient(135deg,#667eea,#764ba2); border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .video-info { font-size: 11px; color: #4a5568; line-height: 1.4; }
+  .xhs-link { background: #fff1f2; border-radius: 8px; padding: 8px 10px; font-size: 11px; color: #e53e3e; display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+
+  /* ── DETAIL PAGE ── */
+  .detail-hero { background: linear-gradient(90deg,#667eea,#764ba2); padding: 20px 24px; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+  .detail-title { font-size: 18px; font-weight: 800; }
+  .detail-meta { font-size: 12px; opacity: 0.85; margin-top: 3px; }
+  .detail-actions { display: flex; gap: 8px; }
+  .action-btn { background: rgba(255,255,255,0.2); color: #fff; border: 1px solid rgba(255,255,255,0.4); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+  .detail-tabs { background: #fff; display: flex; gap: 0; border-bottom: 1px solid #edf2f7; }
+  .tab { padding: 12px 20px; font-size: 13px; color: #718096; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 600; }
+
+  .detail-body { background: #fff; padding: 20px 24px; }
+  .budget-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .budget-table th { text-align: left; color: #a0aec0; font-size: 11px; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid #edf2f7; }
+  .budget-table td { padding: 8px 8px; border-bottom: 1px solid #f7fafc; color: #4a5568; }
+  .budget-table tr:last-child td { font-weight: 700; color: #667eea; border-top: 2px solid #edf2f7; }
+
+  /* ── HISTORY PAGE ── */
+  .history-body { background: #f7fafc; padding: 20px 24px; min-height: 260px; }
+  .history-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .history-card { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s; }
+  .history-card:hover { transform: translateY(-2px); }
+  .history-card-top { padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+  .history-dest { font-weight: 700; font-size: 14px; }
+  .history-days { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+  .history-card-bot { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .history-date { font-size: 11px; color: #a0aec0; }
+  .history-budget { font-size: 12px; font-weight: 700; color: #667eea; }
+</style>
+</head>
+<body>
+
+<div class="page-title">轻快色调 UI 设计方案</div>
+<div class="page-sub">主色调：柔和紫蓝渐变 · 背景：浅灰白 · 强调：薰衣草紫</div>
+
+<div class="screens">
+
+  <!-- SCREEN 1: HOMEPAGE -->
+  <div>
+    <div class="screen-label">页面 1 · 首页 — 输入表单</div>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="dot" style="background:#ff5f57"></div>
+        <div class="dot" style="background:#ffbd2e"></div>
+        <div class="dot" style="background:#28c840"></div>
+      </div>
+      <div class="nav">
+        <div class="nav-logo">✈️ TravelAI</div>
+        <div class="nav-links">
+          <span>发现</span><span>我的攻略</span>
+        </div>
+        <div class="nav-btn">登录</div>
+      </div>
+      <div class="hero">
+        <div class="hero-tag">✨ AI 旅行规划师</div>
+        <div class="hero-title">发现你的下一次旅行</div>
+        <div class="hero-sub">输入目的地、时间与预算，AI 为你生成专属攻略</div>
+        <div class="search-card">
+          <div class="search-grid">
+            <div class="field-group">
+              <label>📍 目的地</label>
+              <input class="field-input" placeholder="如：京都、巴黎、曼谷" value="京都">
+            </div>
+            <div class="field-group">
+              <label>📅 出发日期</label>
+              <input class="field-input" placeholder="选择日期" value="2025-06-15">
+            </div>
+            <div class="field-group">
+              <label>🌙 旅行天数</label>
+              <input class="field-input" placeholder="天" value="5">
+            </div>
+            <div class="field-group">
+              <label>💰 总预算（元）</label>
+              <input class="field-input" placeholder="¥" value="8,000">
+            </div>
+          </div>
+          <button class="btn-generate">🚀 &nbsp; 立即生成专属攻略</button>
+        </div>
+        <div class="popular-tags">
+          <span class="tag">🗾 日本</span>
+          <span class="tag">🇫🇷 欧洲</span>
+          <span class="tag">🌴 东南亚</span>
+          <span class="tag">🏔️ 国内</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: GENERATING -->
+  <div>
+    <div class="screen-label">页面 2 · 攻略生成中（流式输出）</div>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="dot" style="background:#ff5f57"></div>
+        <div class="dot" style="background:#ffbd2e"></div>
+        <div class="dot" style="background:#28c840"></div>
+      </div>
+      <div class="nav">
+        <div class="nav-logo">✈️ TravelAI</div>
+        <div class="nav-links"><span>发现</span><span>我的攻略</span></div>
+        <div class="nav-btn">登录</div>
+      </div>
+      <div class="gen-layout">
+        <div class="gen-main">
+          <div class="dest-badge">📍 京都 · 5天 · ¥8,000</div>
+          <div class="progress-bar"><div class="progress-fill"></div></div>
+          <div class="day-block day-done">
+            <div class="day-title">Day 1 · 抵达 · 岚山竹林</div>
+            <div class="day-content">下午抵达关西机场，乘特急列车入住民宿。傍晚前往岚山竹林，感受静谧氛围。推荐晚餐：天天咖啡（¥80/人）</div>
+          </div>
+          <div class="day-block day-done">
+            <div class="day-title">Day 2 · 伏见稻荷 · 祇园</div>
+            <div class="day-content">早起登伏见稻荷千鸟居，避开游客高峰。下午漫步祇园石塀小路，寻找舞妓踪迹。</div>
+          </div>
+          <div class="day-block day-streaming">
+            <div class="day-title">Day 3 · 金阁寺 · 二条城</div>
+            <div class="day-content">上午参观金阁寺，门票 500 日元。二条城的鸣鹰地板是一大亮点<span class="cursor"></span></div>
+          </div>
+        </div>
+        <div class="gen-sidebar">
+          <div class="sidebar-title">📹 相关视频</div>
+          <div class="video-item">
+            <div class="video-thumb">▶</div>
+            <div class="video-info">京都5天4夜完全攻略 2024最新版</div>
+          </div>
+          <div class="video-item">
+            <div class="video-thumb">▶</div>
+            <div class="video-info">岚山竹林｜清晨空无一人的秘诀</div>
+          </div>
+          <div style="margin-top:12px;">
+            <div class="sidebar-title">🔗 小红书参考</div>
+            <div class="xhs-link">📌 搜索「京都5天攻略」</div>
+            <div class="xhs-link" style="margin-top:6px;">📌 搜索「京都住宿推荐」</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: DETAIL -->
+  <div>
+    <div class="screen-label">页面 3 · 攻略详情 · 预算表</div>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="dot" style="background:#ff5f57"></div>
+        <div class="dot" style="background:#ffbd2e"></div>
+        <div class="dot" style="background:#28c840"></div>
+      </div>
+      <div class="detail-hero">
+        <div>
+          <div class="detail-title">🗺️ 京都深度游 · 5天4夜</div>
+          <div class="detail-meta">2025年6月15日出发 &nbsp;·&nbsp; 预算 ¥8,000 &nbsp;·&nbsp; 生成于 2025-05-08</div>
+        </div>
+        <div class="detail-actions">
+          <div class="action-btn">📥 导出 PDF</div>
+          <div class="action-btn">🔗 分享</div>
+        </div>
+      </div>
+      <div class="detail-tabs">
+        <div class="tab active">📅 行程</div>
+        <div class="tab">💰 预算</div>
+        <div class="tab">💡 贴士</div>
+        <div class="tab">📹 视频</div>
+      </div>
+      <div class="detail-body">
+        <table class="budget-table">
+          <thead>
+            <tr><th>类别</th><th>明细</th><th>金额</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>✈️ 交通</td><td>机票往返 + 市内交通</td><td>¥3,200</td></tr>
+            <tr><td>🏨 住宿</td><td>民宿 4晚（均价¥450/晚）</td><td>¥1,800</td></tr>
+            <tr><td>🍱 餐饮</td><td>含早餐 + 4次正餐</td><td>¥1,500</td></tr>
+            <tr><td>🎭 景点</td><td>门票合计</td><td>¥800</td></tr>
+            <tr><td>🛍️ 购物/其他</td><td>预留弹性</td><td>¥700</td></tr>
+            <tr><td><b>合计</b></td><td></td><td>¥8,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 4: HISTORY -->
+  <div>
+    <div class="screen-label">页面 4 · 历史攻略</div>
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="dot" style="background:#ff5f57"></div>
+        <div class="dot" style="background:#ffbd2e"></div>
+        <div class="dot" style="background:#28c840"></div>
+      </div>
+      <div class="nav">
+        <div class="nav-logo">✈️ TravelAI</div>
+        <div class="nav-links"><span>发现</span><span style="color:#667eea;font-weight:600;">我的攻略</span></div>
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;">J</div>
+      </div>
+      <div class="history-body">
+        <div style="font-size:15px;font-weight:700;color:#2d3748;margin-bottom:14px;">我的攻略记录</div>
+        <div class="history-grid">
+          <div class="history-card">
+            <div class="history-card-top" style="background:linear-gradient(135deg,#667eea,#764ba2)">
+              <div class="history-dest">🗾 京都深度游</div>
+              <div class="history-days">5天4夜 · 文化探索</div>
+            </div>
+            <div class="history-card-bot">
+              <div class="history-date">2025-05-08</div>
+              <div class="history-budget">¥8,000</div>
+            </div>
+          </div>
+          <div class="history-card">
+            <div class="history-card-top" style="background:linear-gradient(135deg,#11998e,#38ef7d)">
+              <div class="history-dest">🌸 北海道之旅</div>
+              <div class="history-days">7天6夜 · 自然风光</div>
+            </div>
+            <div class="history-card-bot">
+              <div class="history-date">2025-04-15</div>
+              <div class="history-budget">¥12,000</div>
+            </div>
+          </div>
+          <div class="history-card">
+            <div class="history-card-top" style="background:linear-gradient(135deg,#f093fb,#f5576c)">
+              <div class="history-dest">🗼 东京漫游</div>
+              <div class="history-days">4天3夜 · 都市体验</div>
+            </div>
+            <div class="history-card-bot">
+              <div class="history-date">2025-03-20</div>
+              <div class="history-budget">¥6,500</div>
+            </div>
+          </div>
+          <div class="history-card" style="border:2px dashed #e2e8f0;box-shadow:none;display:flex;align-items:center;justify-content:center;min-height:90px;">
+            <div style="text-align:center;color:#a0aec0;font-size:13px;">
+              <div style="font-size:24px;margin-bottom:6px;">+</div>
+              新建攻略
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Inject helper if not already present
+</script>
+</body>
+</html>

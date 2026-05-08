@@ -1,0 +1,86 @@
+<h2>系统整体架构</h2>
+<p class="subtitle">旅游攻略系统 — Next.js + Supabase + Gemini + YouTube API</p>
+
+<div style="display:flex;flex-direction:column;gap:16px;max-width:900px;margin:0 auto;">
+
+  <!-- 用户层 -->
+  <div style="background:#1e3a5f;border-radius:12px;padding:16px 24px;">
+    <div class="label" style="color:#7eb8f7;margin-bottom:8px;">用户层 (Browser)</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="background:#2a4a7a;border-radius:8px;padding:10px 18px;color:#e0eeff;font-size:14px;">🗺️ 目的地 / 时间 / 预算 输入表单</div>
+      <div style="background:#2a4a7a;border-radius:8px;padding:10px 18px;color:#e0eeff;font-size:14px;">📄 完整攻略文档展示</div>
+      <div style="background:#2a4a7a;border-radius:8px;padding:10px 18px;color:#e0eeff;font-size:14px;">📚 历史攻略记录</div>
+      <div style="background:#2a4a7a;border-radius:8px;padding:10px 18px;color:#e0eeff;font-size:14px;">🔗 小红书 / YouTube 跳转链接</div>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;font-size:22px;color:#7eb8f7;">⬆⬇</div>
+
+  <!-- Next.js 层 -->
+  <div style="background:#1a3d2b;border-radius:12px;padding:16px 24px;">
+    <div class="label" style="color:#6fcf97;margin-bottom:8px;">Next.js App（Vercel 免费托管）</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="background:#224d35;border-radius:8px;padding:10px 18px;color:#d4f5e2;font-size:14px;">🎨 React UI 页面</div>
+      <div style="background:#224d35;border-radius:8px;padding:10px 18px;color:#d4f5e2;font-size:14px;">📡 API Routes（/api/generate、/api/history）</div>
+      <div style="background:#224d35;border-radius:8px;padding:10px 18px;color:#d4f5e2;font-size:14px;">🔐 NextAuth.js（Google/GitHub OAuth）</div>
+    </div>
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;font-size:22px;color:#6fcf97;">⬆⬇</div>
+
+  <!-- 服务层 -->
+  <div style="display:flex;gap:16px;flex-wrap:wrap;">
+
+    <div style="flex:1;min-width:200px;background:#3d2a1a;border-radius:12px;padding:16px 20px;">
+      <div class="label" style="color:#f2994a;margin-bottom:8px;">Gemini API（免费）</div>
+      <div style="font-size:13px;color:#ffe0c0;line-height:1.6;">
+        gemini-1.5-flash<br>
+        生成完整攻略文档<br>
+        行程 + 预算 + 贴士<br>
+        Streaming 输出
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:200px;background:#2a1a3d;border-radius:12px;padding:16px 20px;">
+      <div class="label" style="color:#bb6bd9;margin-bottom:8px;">YouTube Data API v3（免费）</div>
+      <div style="font-size:13px;color:#e8c8ff;line-height:1.6;">
+        搜索目的地相关视频<br>
+        返回标题 / 缩略图 / 链接<br>
+        嵌入攻略文档中
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:200px;background:#1a2a3d;border-radius:12px;padding:16px 20px;">
+      <div class="label" style="color:#56ccf2;margin-bottom:8px;">小红书（无 API）</div>
+      <div style="font-size:13px;color:#c0e8ff;line-height:1.6;">
+        自动构造搜索 URL<br>
+        如：小红书搜"京都3天"<br>
+        以卡片形式展示链接
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 箭头 -->
+  <div style="text-align:center;font-size:22px;color:#56ccf2;">⬆⬇</div>
+
+  <!-- 数据层 -->
+  <div style="background:#1a1a3a;border-radius:12px;padding:16px 24px;">
+    <div class="label" style="color:#9b8ec4;margin-bottom:8px;">Supabase（免费层）</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="background:#252547;border-radius:8px;padding:10px 18px;color:#dcd4ff;font-size:14px;">🗄️ PostgreSQL — 存储用户攻略</div>
+      <div style="background:#252547;border-radius:8px;padding:10px 18px;color:#dcd4ff;font-size:14px;">🔐 Auth — Google/GitHub 登录</div>
+      <div style="background:#252547;border-radius:8px;padding:10px 18px;color:#dcd4ff;font-size:14px;">📋 RLS 行级权限控制</div>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:24px;background:#1c1c1c;border-radius:10px;padding:16px 24px;max-width:900px;margin-left:auto;margin-right:auto;">
+  <div class="label" style="color:#aaa;margin-bottom:8px;">核心数据流</div>
+  <div style="font-size:13px;color:#ccc;line-height:2;">
+    用户填写表单 → API Route 并行调用 Gemini + YouTube API → 合并结果 → Streaming 输出到前端 → 用户登录后保存至 Supabase → 下次访问可查历史
+  </div>
+</div>

@@ -1,0 +1,97 @@
+<h2>页面结构设计</h2>
+<p class="subtitle">共 4 个核心页面 — 点击选择你最想深入讨论的页面</p>
+
+<div class="cards">
+
+  <!-- 首页 -->
+  <div class="card" data-choice="home" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a2a3d;padding:16px;min-height:180px;">
+      <div class="mock-nav" style="margin-bottom:12px;font-size:12px;">✈️ TravelAI &nbsp;|&nbsp; 首页 &nbsp;|&nbsp; 我的攻略 &nbsp;|&nbsp; 登录</div>
+      <div style="text-align:center;padding:20px 0;">
+        <div style="font-size:18px;font-weight:bold;color:#fff;margin-bottom:8px;">发现你的下一次旅行</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">
+          <input class="mock-input" style="width:140px;font-size:11px;" placeholder="目的地（如：京都）">
+          <input class="mock-input" style="width:110px;font-size:11px;" placeholder="出发日期">
+          <input class="mock-input" style="width:80px;font-size:11px;" placeholder="天数">
+          <input class="mock-input" style="width:100px;font-size:11px;" placeholder="预算 (元)">
+        </div>
+        <button class="mock-button" style="font-size:12px;">🚀 生成攻略</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>首页 — 输入表单</h3>
+      <p>目的地、日期、天数、预算四项输入，一键触发生成</p>
+    </div>
+  </div>
+
+  <!-- 攻略生成页 -->
+  <div class="card" data-choice="generate" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a3d2b;padding:16px;min-height:180px;">
+      <div style="padding:10px 0;">
+        <div style="font-size:13px;font-weight:bold;color:#6fcf97;margin-bottom:8px;">📍 京都 · 5天 · ¥8000</div>
+        <div style="font-size:11px;color:#a8d5b8;line-height:1.8;">
+          <div style="background:#224d35;border-radius:6px;padding:6px 10px;margin-bottom:6px;">📅 Day 1 · 抵达 + 岚山竹林</div>
+          <div style="background:#224d35;border-radius:6px;padding:6px 10px;margin-bottom:6px;">📅 Day 2 · 伏见稻荷 + 祇园</div>
+          <div style="background:#1d3d28;border-radius:6px;padding:6px 10px;opacity:0.6;font-style:italic;">✍️ AI 正在生成 Day 3...</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <div style="background:#2a2a2a;border-radius:4px;padding:4px 8px;font-size:10px;color:#aaa;">📹 相关视频 ×3</div>
+          <div style="background:#2a2a2a;border-radius:4px;padding:4px 8px;font-size:10px;color:#aaa;">🔗 小红书参考</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>攻略生成页</h3>
+      <p>流式输出逐步呈现，含行程、YouTube 视频、小红书链接</p>
+    </div>
+  </div>
+
+  <!-- 攻略详情页 -->
+  <div class="card" data-choice="detail" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#3d1a2a;padding:16px;min-height:180px;">
+      <div style="font-size:11px;color:#f5a0c0;line-height:1.8;">
+        <div style="font-size:13px;font-weight:bold;color:#ff85a8;margin-bottom:8px;">🗓️ 行程 &nbsp; 💰 预算 &nbsp; 💡 贴士</div>
+        <div style="background:#4d2235;border-radius:6px;padding:6px 10px;margin-bottom:4px;">💰 预算明细表</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#eaa;">
+          <div>机票往返</div><div>¥2,800</div>
+          <div>住宿 (5晚)</div><div>¥2,500</div>
+          <div>餐饮</div><div>¥1,200</div>
+          <div>景点门票</div><div>¥800</div>
+        </div>
+        <div style="margin-top:6px;background:#4d2235;border-radius:6px;padding:4px 10px;font-size:10px;">📥 导出 PDF &nbsp; 🔗 分享链接</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>攻略详情页</h3>
+      <p>完整攻略文档、预算明细表、导出 PDF、生成分享链接</p>
+    </div>
+  </div>
+
+  <!-- 历史记录页 -->
+  <div class="card" data-choice="history" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#2a2a1a;padding:16px;min-height:180px;">
+      <div style="font-size:11px;color:#f2c94c;line-height:1.8;">
+        <div style="font-size:13px;font-weight:bold;color:#f2c94c;margin-bottom:8px;">📚 我的攻略（已登录）</div>
+        <div style="background:#3a3420;border-radius:6px;padding:6px 10px;margin-bottom:5px;">
+          <div style="color:#fff;font-size:12px;">🗺️ 京都 5天</div>
+          <div style="color:#888;font-size:10px;">2025-05-01 · ¥8,000</div>
+        </div>
+        <div style="background:#3a3420;border-radius:6px;padding:6px 10px;margin-bottom:5px;">
+          <div style="color:#fff;font-size:12px;">🗺️ 北海道 7天</div>
+          <div style="color:#888;font-size:10px;">2025-04-15 · ¥12,000</div>
+        </div>
+        <div style="background:#3a3420;border-radius:6px;padding:6px 10px;opacity:0.5;">
+          <div style="color:#fff;font-size:12px;">🗺️ 东京 4天</div>
+          <div style="color:#888;font-size:10px;">2025-03-20 · ¥6,500</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>历史攻略页</h3>
+      <p>查看、重新访问之前生成的攻略（需登录，最近10条）</p>
+    </div>
+  </div>
+
+</div>
+
+<p style="margin-top:16px;color:#888;font-size:13px;text-align:center;">点击卡片选择你最想深入了解的页面，或直接在对话框中告诉我是否整体认可</p>

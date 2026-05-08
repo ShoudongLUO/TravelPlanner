@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据模型 & API 设计 v2</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; color: #2d3748; padding: 28px 20px 48px; }
+
+  h2 { font-size: 20px; font-weight: 800; color: #2d3748; margin-bottom: 4px; }
+  .subtitle { color: #718096; font-size: 14px; margin-bottom: 32px; }
+  .section { margin-bottom: 40px; }
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #a0aec0; margin-bottom: 14px; }
+
+  /* ── TABLE CARDS ── */
+  .erd { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .table-card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.08); min-width: 200px; flex: 1; }
+  .table-header { padding: 12px 16px; font-weight: 700; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .table-row { padding: 8px 16px; font-size: 12px; border-bottom: 1px solid #f0f4f8; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .table-row:last-child { border-bottom: none; }
+  .col-name { color: #2d3748; font-weight: 500; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .col-type { color: #a0aec0; font-size: 11px; font-family: monospace; }
+  .badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+  .pk  { background: #fef3c7; color: #d97706; }
+  .fk  { background: #e0f2fe; color: #0369a1; }
+  .idx { background: #f0fdf4; color: #16a34a; }
+  .new { background: #fce7f3; color: #be185d; }
+
+  .relation-line { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #a0aec0; font-size: 11px; padding-top: 40px; flex-shrink: 0; }
+
+  /* ── API TABLE ── */
+  .api-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .api-table thead tr { background: linear-gradient(90deg, #667eea, #764ba2); }
+  .api-table th { padding: 11px 14px; text-align: left; color: #fff; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .api-table td { padding: 10px 14px; border-bottom: 1px solid #f0f4f8; font-size: 12px; vertical-align: top; }
+  .api-table tr:last-child td { border-bottom: none; }
+  .api-table tr.new-row td { background: #fff0f8; }
+  .api-table tr.new-row:hover td { background: #ffe4f3; }
+  .api-table tr:not(.new-row):hover td { background: #faf5ff; }
+
+  .method { display: inline-block; padding: 3px 9px; border-radius: 6px; font-weight: 700; font-size: 11px; font-family: monospace; }
+  .POST { background: #dcfce7; color: #16a34a; }
+  .GET  { background: #dbeafe; color: #1d4ed8; }
+  .DEL  { background: #fee2e2; color: #dc2626; }
+  .PATCH{ background: #fef9c3; color: #a16207; }
+
+  .endpoint { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: #4a5568; }
+  .endpoint strong { color: #667eea; }
+  .auth-badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; background: #fef3c7; color: #d97706; }
+  .open-badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; background: #f0fdf4; color: #16a34a; }
+  .new-badge { display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; background: #fce7f3; color: #be185d; margin-left: 4px; }
+
+  /* ── FEEDBACK FLOW ── */
+  .flow-wrap { display: flex; flex-direction: column; gap: 12px; }
+  .flow-row { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .flow-step { background: #fff; border-radius: 12px; padding: 12px 14px; min-width: 120px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); font-size: 11px; text-align: center; flex: 1; }
+  .flow-step .icon { font-size: 18px; margin-bottom: 4px; }
+  .flow-step .label { font-weight: 600; color: #2d3748; font-size: 11px; }
+  .flow-step .desc { color: #718096; font-size: 10px; margin-top: 2px; line-height: 1.4; }
+  .flow-step.highlight { background: linear-gradient(135deg,#fff0f8,#fce7f3); border: 1.5px solid #f9a8d4; }
+  .flow-step.ai { background: linear-gradient(135deg,#faf5ff,#f0f4ff); border: 1px solid #e9d8fd; }
+  .flow-arrow { color: #cbd5e0; font-size: 18px; padding: 0 4px; flex-shrink: 0; }
+
+  .loop-note {
+    background: linear-gradient(135deg, #fff0f8, #fce7f3);
+    border: 1.5px solid #f9a8d4;
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 12px;
+    color: #831843;
+    margin-top: 14px;
+    line-height: 1.8;
+  }
+
+  /* ── UI PREVIEW ── */
+  .preview-card {
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    max-width: 480px;
+  }
+  .preview-header {
+    background: linear-gradient(90deg, #f093fb, #f5576c);
+    padding: 14px 18px;
+    color: #fff;
+  }
+  .preview-header h4 { font-size: 14px; font-weight: 700; }
+  .preview-header p { font-size: 11px; opacity: 0.9; margin-top: 2px; }
+  .preview-body { padding: 16px 18px; }
+  .rating-row { display: flex; gap: 6px; margin-bottom: 14px; }
+  .star { font-size: 20px; cursor: pointer; }
+  .field-group { margin-bottom: 12px; }
+  .field-group label { display: block; font-size: 11px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .field-input { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #2d3748; background: #f7fafc; width: 100%; }
+  .budget-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .submit-btn { width: 100%; background: linear-gradient(90deg, #f093fb, #f5576c); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 13px; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<h2>数据模型 & API 设计 <span style="font-size:14px;color:#be185d;font-weight:600;">+ 用户反馈闭环</span></h2>
+<p class="subtitle">新增 itinerary_reviews 表 · 反馈驱动推荐优化</p>
+
+<!-- ── SECTION 1: DATA MODEL ── -->
+<div class="section">
+  <div class="section-title">① 数据库表结构（3张表）</div>
+  <div class="erd">
+
+    <!-- users -->
+    <div class="table-card">
+      <div class="table-header" style="background:linear-gradient(90deg,#667eea,#764ba2)">👤 auth.users</div>
+      <div class="table-row"><span class="col-name">id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge pk">PK</span></div></div>
+      <div class="table-row"><span class="col-name">email</span><span class="col-type">text</span></div>
+      <div class="table-row"><span class="col-name">provider</span><span class="col-type">text</span></div>
+      <div class="table-row"><span class="col-name">created_at</span><span class="col-type">timestamptz</span></div>
+    </div>
+
+    <div class="relation-line"><span>1</span><span>─</span><span>∞</span></div>
+
+    <!-- itineraries -->
+    <div class="table-card">
+      <div class="table-header" style="background:linear-gradient(90deg,#11998e,#38ef7d)">🗺️ itineraries</div>
+      <div class="table-row"><span class="col-name">id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge pk">PK</span></div></div>
+      <div class="table-row"><span class="col-name">user_id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge fk">FK</span></div></div>
+      <div class="table-row"><span class="col-name">destination</span><span class="col-type">text</span></div>
+      <div class="table-row"><span class="col-name">start_date</span><span class="col-type">date</span></div>
+      <div class="table-row"><span class="col-name">days</span><span class="col-type">integer</span></div>
+      <div class="table-row"><span class="col-name">budget</span><span class="col-type">integer</span></div>
+      <div class="table-row" style="background:#faf5ff"><span class="col-name">content</span><span class="col-type">jsonb</span></div>
+      <div class="table-row"><span class="col-name">youtube_videos</span><span class="col-type">jsonb</span></div>
+      <div class="table-row"><span class="col-name">created_at</span><span class="col-type">timestamptz</span></div>
+    </div>
+
+    <div class="relation-line"><span>1</span><span>─</span><span>1</span></div>
+
+    <!-- reviews (NEW) -->
+    <div class="table-card" style="border: 2px solid #f9a8d4;">
+      <div class="table-header" style="background:linear-gradient(90deg,#f093fb,#f5576c)">
+        ⭐ itinerary_reviews <span class="badge new" style="font-size:9px">NEW</span>
+      </div>
+      <div class="table-row"><span class="col-name">id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge pk">PK</span></div></div>
+      <div class="table-row"><span class="col-name">itinerary_id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge fk">FK</span></div></div>
+      <div class="table-row"><span class="col-name">user_id</span><div style="display:flex;gap:5px"><span class="col-type">uuid</span><span class="badge fk">FK</span></div></div>
+      <div class="table-row"><span class="col-name">rating</span><span class="col-type">integer (1-5)</span></div>
+      <div class="table-row"><span class="col-name">actual_budget</span><span class="col-type">integer</span></div>
+      <div class="table-row" style="background:#fff0f8"><span class="col-name">highlights</span><span class="col-type">text</span></div>
+      <div class="table-row" style="background:#fff0f8"><span class="col-name">improvements</span><span class="col-type">text</span></div>
+      <div class="table-row"><span class="col-name">visited_at</span><span class="col-type">date</span></div>
+      <div class="table-row"><span class="col-name">created_at</span><span class="col-type">timestamptz</span></div>
+    </div>
+
+  </div>
+  <div style="margin-top:12px;background:#fff0f8;border-radius:10px;padding:12px 16px;font-size:12px;color:#831843;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+    🔒 <strong>RLS：</strong>reviews 同样绑定 <code style="background:#fce7f3;padding:1px 5px;border-radius:4px;">auth.uid() = user_id</code>，一条 itinerary 只能有一条 review（唯一约束）。
+  </div>
+</div>
+
+<!-- ── SECTION 2: API ── -->
+<div class="section">
+  <div class="section-title">② API Routes（含新增反馈接口）</div>
+  <table class="api-table">
+    <thead>
+      <tr><th>方法</th><th>路径</th><th>功能</th><th>认证</th><th>说明</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="method POST">POST</span></td>
+        <td class="endpoint"><strong>/api/generate</strong></td>
+        <td>生成攻略</td>
+        <td><span class="open-badge">可选</span></td>
+        <td>Gemini + YouTube 并行，SSE 流式响应；<strong>注入同目的地历史反馈作为 prompt 上下文</strong></td>
+      </tr>
+      <tr>
+        <td><span class="method POST">POST</span></td>
+        <td class="endpoint"><strong>/api/itineraries</strong></td>
+        <td>保存攻略</td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>生成完成后持久化到 Supabase</td>
+      </tr>
+      <tr>
+        <td><span class="method GET">GET</span></td>
+        <td class="endpoint"><strong>/api/itineraries</strong></td>
+        <td>历史列表</td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>返回最近 10 条，含 review 状态（已反馈/待反馈）</td>
+      </tr>
+      <tr>
+        <td><span class="method GET">GET</span></td>
+        <td class="endpoint"><strong>/api/itineraries/[id]</strong></td>
+        <td>攻略详情</td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>返回完整攻略 + 关联 review（如有）</td>
+      </tr>
+      <tr>
+        <td><span class="method DEL">DELETE</span></td>
+        <td class="endpoint"><strong>/api/itineraries/[id]</strong></td>
+        <td>删除攻略</td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>级联删除关联 review</td>
+      </tr>
+      <tr class="new-row">
+        <td><span class="method POST">POST</span></td>
+        <td class="endpoint"><strong>/api/itineraries/[id]/review</strong></td>
+        <td>提交反馈 <span class="new-badge">NEW</span></td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>评分 + 实际花费 + 亮点 + 改进建议，一条攻略只能提交一次</td>
+      </tr>
+      <tr class="new-row">
+        <td><span class="method PATCH">PATCH</span></td>
+        <td class="endpoint"><strong>/api/itineraries/[id]/review</strong></td>
+        <td>修改反馈 <span class="new-badge">NEW</span></td>
+        <td><span class="auth-badge">需登录</span></td>
+        <td>允许用户在旅行后补充或修正反馈内容</td>
+      </tr>
+      <tr>
+        <td><span class="method GET">GET</span></td>
+        <td class="endpoint"><strong>/api/youtube</strong></td>
+        <td>YouTube 搜索</td>
+        <td><span class="open-badge">内部</span></td>
+        <td>封装 YouTube Data API v3</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── SECTION 3: FEEDBACK LOOP ── -->
+<div class="section">
+  <div class="section-title">③ 反馈闭环：如何影响后续推荐</div>
+  <div class="flow-wrap">
+    <!-- Row 1: 生成流程 -->
+    <div style="font-size:11px;color:#a0aec0;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">生成新攻略时</div>
+    <div class="flow-row">
+      <div class="flow-step"><div class="icon">📝</div><div class="label">用户提交表单</div><div class="desc">目的地「京都」</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step highlight"><div class="icon">🔍</div><div class="label">查询历史反馈</div><div class="desc">同目的地的<br>reviews 摘要</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step ai"><div class="icon">🤖</div><div class="label">注入 Prompt</div><div class="desc">「上一次用户反馈：<br>伏见稻荷建议早上6点前到」</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">✨</div><div class="label">Gemini 生成</div><div class="desc">更精准的<br>个性化攻略</div></div>
+    </div>
+
+    <!-- Row 2: 反馈流程 -->
+    <div style="font-size:11px;color:#a0aec0;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 4px;">旅行完成后</div>
+    <div class="flow-row">
+      <div class="flow-step"><div class="icon">✈️</div><div class="label">用户完成旅行</div><div class="desc">历史页出现<br>「写反馈」提示</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step highlight"><div class="icon">⭐</div><div class="label">提交反馈</div><div class="desc">评分 + 实际花费<br>亮点 + 改进</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">💾</div><div class="label">存入 reviews 表</div><div class="desc">绑定到原攻略</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step ai"><div class="icon">🔄</div><div class="label">下次生成自动引用</div><div class="desc">同目的地新攻略<br>参考此反馈</div></div>
+    </div>
+  </div>
+
+  <div class="loop-note">
+    💡 <strong>Prompt 注入策略：</strong>生成新攻略前，查询当前用户同目的地的历史 reviews（最多 3 条），提取 <code style="background:#fce7f3;padding:1px 5px;border-radius:4px;">highlights</code> 和 <code style="background:#fce7f3;padding:1px 5px;border-radius:4px;">improvements</code> 字段，拼入 Gemini system prompt：<br>
+    <em>"根据该用户的历史反馈：{highlights}，以及改进建议：{improvements}，优化本次行程推荐。"</em><br>
+    无历史反馈时，Gemini 按通用逻辑生成，不影响首次体验。
+  </div>
+</div>
+
+<!-- ── SECTION 4: UI PREVIEW ── -->
+<div class="section">
+  <div class="section-title">④ 反馈表单 UI 预览</div>
+  <div class="preview-card">
+    <div class="preview-header">
+      <h4>✍️ 旅行后感受如何？</h4>
+      <p>京都深度游 · 5天4夜 · 2025年6月</p>
+    </div>
+    <div class="preview-body">
+      <div class="field-group">
+        <label>整体评分</label>
+        <div class="rating-row">
+          <span class="star">⭐</span><span class="star">⭐</span><span class="star">⭐</span><span class="star">⭐</span><span class="star" style="opacity:0.3">⭐</span>
+          <span style="font-size:12px;color:#718096;margin-left:4px;">4 / 5</span>
+        </div>
+      </div>
+      <div class="budget-row">
+        <div class="field-group" style="margin-bottom:0">
+          <label>计划预算</label>
+          <input class="field-input" value="¥8,000" disabled style="color:#a0aec0">
+        </div>
+        <div class="field-group" style="margin-bottom:0">
+          <label>实际花费</label>
+          <input class="field-input" placeholder="¥" value="¥9,200">
+        </div>
+      </div>
+      <div class="field-group">
+        <label>✨ 旅行亮点</label>
+        <textarea class="field-input" rows="2" style="resize:none">伏见稻荷清晨6点前人很少，强烈推荐！岚山竹林建议傍晚去，光线漂亮。</textarea>
+      </div>
+      <div class="field-group">
+        <label>🔧 需要改进</label>
+        <textarea class="field-input" rows="2" style="resize:none">Day 3 行程太赶，金阁寺和二条城之间建议预留更多时间。</textarea>
+      </div>
+      <button class="submit-btn">📬 提交反馈</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
