@@ -15,6 +15,9 @@ create table public.itinerary_reviews (
   constraint one_review_per_itinerary unique (itinerary_id)
 );
 
+create index itinerary_reviews_itinerary_id_idx on public.itinerary_reviews(itinerary_id);
+create index itinerary_reviews_user_id_idx on public.itinerary_reviews(user_id);
+
 alter table public.itinerary_reviews enable row level security;
 
 create policy "users_own_reviews" on public.itinerary_reviews
