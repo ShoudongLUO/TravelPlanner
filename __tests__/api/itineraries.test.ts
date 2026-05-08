@@ -82,6 +82,26 @@ describe('POST /api/itineraries', () => {
   })
 })
 
+describe('GET /api/itineraries/[id]', () => {
+  it('returns 401 when not authenticated', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
+    })
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1')
+    const res = await GET_DETAIL(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns itinerary detail for authenticated user', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue(makeMockSupabase())
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1')
+    const res = await GET_DETAIL(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.itinerary).toBeDefined()
+  })
+})
+
 describe('DELETE /api/itineraries/[id]', () => {
   it('returns 401 when not authenticated', async () => {
     ;(createClient as jest.Mock).mockResolvedValue({
@@ -90,5 +110,21 @@ describe('DELETE /api/itineraries/[id]', () => {
     const req = new NextRequest('http://localhost/api/itineraries/itin-1')
     const res = await DELETE(req, { params: Promise.resolve({ id: 'itin-1' }) })
     expect(res.status).toBe(401)
+  })
+
+  it('returns 204 on successful delete', async () => {
+    const deleteChain = {
+      delete: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+    }
+    // Make the chain itself a thenable that resolves to { error: null }
+    ;(deleteChain as any).then = (resolve: (v: unknown) => void) => resolve({ data: null, error: null })
+    ;(createClient as jest.Mock).mockResolvedValue({
+      auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from: jest.fn().mockReturnValue(deleteChain),
+    })
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1', { method: 'DELETE' })
+    const res = await DELETE(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(204)
   })
 })
