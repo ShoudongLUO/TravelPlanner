@@ -1,4 +1,4 @@
-import { buildYoutubeSearchUrl, parseYoutubeResponse } from '@/lib/youtube'
+import { buildYoutubeSearchUrl, parseYoutubeResponse, searchYoutubeVideos } from '@/lib/youtube'
 
 describe('buildYoutubeSearchUrl', () => {
   it('builds correct URL with destination', () => {
@@ -34,5 +34,18 @@ describe('parseYoutubeResponse', () => {
 
   it('returns empty array for empty items', () => {
     expect(parseYoutubeResponse({ items: [] })).toEqual([])
+  })
+})
+
+describe('searchYoutubeVideos', () => {
+  it('returns empty array when YouTube API returns 403 (quota exceeded)', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 }) as jest.Mock
+    const result = await searchYoutubeVideos('京都')
+    expect(result).toEqual([])
+  })
+
+  it('throws error for non-403 API failures', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 }) as jest.Mock
+    await expect(searchYoutubeVideos('京都')).rejects.toThrow('YouTube API error: 500')
   })
 })

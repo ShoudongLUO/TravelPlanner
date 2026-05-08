@@ -2,6 +2,14 @@ import type { YoutubeVideo } from './types'
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3/search'
 
+interface YoutubeItem {
+  id: { videoId: string }
+  snippet: {
+    title: string
+    thumbnails: { medium: { url: string } }
+  }
+}
+
 export function buildYoutubeSearchUrl(destination: string): string {
   const params = new URLSearchParams({
     part: 'snippet',
@@ -15,7 +23,7 @@ export function buildYoutubeSearchUrl(destination: string): string {
 }
 
 export function parseYoutubeResponse(raw: { items: unknown[] }): YoutubeVideo[] {
-  return raw.items.map((item: any) => ({
+  return (raw.items as YoutubeItem[]).map((item) => ({
     id: item.id.videoId,
     title: item.snippet.title,
     thumbnail: item.snippet.thumbnails.medium.url,
