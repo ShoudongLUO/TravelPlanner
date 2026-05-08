@@ -49,8 +49,9 @@ export async function POST(request: NextRequest) {
           encoder.encode(`data: ${JSON.stringify({ type: 'done', content, youtube_videos: youtubeVideos })}\n\n`)
         )
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Generation failed'
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Generation failed' })}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ type: 'error', message })}\n\n`)
         )
       } finally {
         controller.close()
