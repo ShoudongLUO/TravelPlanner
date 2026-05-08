@@ -97,4 +97,14 @@ describe('PATCH /api/itineraries/[id]/review', () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: 'itin-1' }) })
     expect(res.status).toBe(400)
   })
+
+  it('returns 400 for negative actual_budget in PATCH', async () => {
+    ;(createClient as jest.Mock).mockResolvedValue(makeMockSupabase())
+    const req = new NextRequest('http://localhost/api/itineraries/itin-1/review', {
+      method: 'PATCH',
+      body: JSON.stringify({ actual_budget: -100 }),
+    })
+    const res = await PATCH(req, { params: Promise.resolve({ id: 'itin-1' }) })
+    expect(res.status).toBe(400)
+  })
 })

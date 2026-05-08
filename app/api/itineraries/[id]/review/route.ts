@@ -64,6 +64,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (rating !== undefined && ((rating as number) < 1 || (rating as number) > 5)) {
     return NextResponse.json({ error: 'rating must be 1-5' }, { status: 400 })
   }
+  if (actual_budget !== undefined && (actual_budget as number) <= 0) {
+    return NextResponse.json({ error: 'actual_budget must be positive' }, { status: 400 })
+  }
 
   const updates: Record<string, unknown> = {}
   if (rating !== undefined) updates.rating = rating
