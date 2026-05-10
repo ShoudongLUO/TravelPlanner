@@ -66,4 +66,31 @@ describe('types', () => {
     }
     expect(it.departure_city).toBe('上海')
   })
+
+  it('DayPlan has timeline, lunch, dinner, attractions, daily_budget', () => {
+    const day: DayPlan = {
+      title: 'Day 1 · 抵达',
+      attractions: ['卢浮宫', '塞纳河'],
+      timeline: [{ time: '09:00', name: '卢浮宫', description: '世界最大博物馆' }],
+      lunch: {
+        name: 'Café Marly',
+        location: '卢浮宫旁',
+        reason: '位置便利',
+        dishes: 'Croque Madame',
+        price_range: '人均¥120',
+      },
+      dinner: {
+        name: 'Au Pied de Cochon',
+        location: 'Les Halles',
+        reason: '法式经典',
+        dishes: '洋葱汤',
+        price_range: '人均¥200',
+      },
+      daily_budget: 1800,
+    }
+    expect(day.attractions).toHaveLength(2)
+    expect(day.timeline[0].time).toBe('09:00')
+    expect(day.lunch.name).toBe('Café Marly')
+    expect(day.daily_budget).toBe(1800)
+  })
 })

@@ -6,9 +6,27 @@ export interface BudgetBreakdown {
   misc: number
 }
 
+export interface TimelineItem {
+  time: string
+  name: string
+  description: string
+}
+
+export interface Restaurant {
+  name: string
+  location: string
+  reason: string
+  dishes: string
+  price_range: string
+}
+
 export interface DayPlan {
   title: string
-  activities: string[]
+  attractions: string[]
+  timeline: TimelineItem[]
+  lunch: Restaurant
+  dinner: Restaurant
+  daily_budget: number
 }
 
 export interface ItineraryContent {
