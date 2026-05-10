@@ -1,15 +1,37 @@
 import type { GenerateRequest, ItineraryReview } from './types'
 
 export function buildSystemPrompt(reviews: ItineraryReview[]): string {
-  const base = `你是一位专业旅游规划师，请根据用户提供的目的地、日期、天数和预算，生成一份详细的旅游攻略。
+  const base = `你是一位专业旅游规划师，请根据用户提供的出发城市、目的地、日期、天数和预算，生成一份详细的旅游攻略。
 
 攻略必须包含以下内容，以 JSON 格式返回：
 {
   "summary": "目的地概览（2-3句）",
   "days": [
     {
-      "title": "Day N · 主题",
-      "activities": ["上午：...", "下午：...", "晚上：...（含推荐餐厅和价格）"]
+      "title": "Day N · 主题关键词",
+      "attractions": ["景点A", "景点B", "景点C"],
+      "timeline": [
+        {
+          "time": "09:00",
+          "name": "景点或活动名称",
+          "description": "详细说明，包含游览建议、门票价格、注意事项"
+        }
+      ],
+      "lunch": {
+        "name": "餐馆名称",
+        "location": "相对于景点的位置描述",
+        "reason": "推荐理由（特色、距离、氛围等）",
+        "dishes": "2-3道推荐菜名",
+        "price_range": "人均¥XX-XX"
+      },
+      "dinner": {
+        "name": "餐馆名称",
+        "location": "位置描述",
+        "reason": "推荐理由",
+        "dishes": "2-3道推荐菜名",
+        "price_range": "人均¥XX-XX"
+      },
+      "daily_budget": 数字
     }
   ],
   "budget_breakdown": {
@@ -26,6 +48,10 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
 要求：
 - 预算单位为人民币元，所有金额为整数
 - budget_breakdown 各项之和应等于总预算
+- attractions 列出当天主要景点名称（2-5个）
+- timeline 按时间顺序排列，包含具体时间点
+- lunch 和 dinner 各选一家餐馆，综合考虑位置便利性和特色
+- 所有 daily_budget 之和应接近 budget_breakdown 中 food + tickets 的总和
 - tips 至少 3 条，包含签证、最佳季节、注意事项等
 - xhs_queries 提供 3 个小红书搜索词
 - 只返回 JSON，不加任何其他文字`

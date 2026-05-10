@@ -49,4 +49,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('伏见稻荷早上6点前人很少')
     expect(prompt).toContain('Day 3 行程太赶')
   })
+
+  it('system prompt describes new DayPlan JSON schema with timeline and restaurants', () => {
+    const prompt = buildSystemPrompt([])
+    expect(prompt).toContain('attractions')
+    expect(prompt).toContain('timeline')
+    expect(prompt).toContain('lunch')
+    expect(prompt).toContain('dinner')
+    expect(prompt).toContain('daily_budget')
+    expect(prompt).not.toContain('"activities"')
+  })
 })
