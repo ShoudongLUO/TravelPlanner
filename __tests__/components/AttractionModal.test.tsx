@@ -10,9 +10,17 @@ const defaultProps = {
 
 describe('AttractionModal', () => {
   beforeEach(() => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({ images: [] }),
+    global.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('wiki-summary')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ summary: 'Wikipedia summary text about Louvre' }),
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ images: [] }),
+      })
     }) as jest.Mock
   })
 
@@ -46,12 +54,20 @@ describe('AttractionModal', () => {
     expect(screen.getByText('卢')).toBeInTheDocument()
   })
 
-  it('fetches wiki images on mount', async () => {
+  it('fetches wiki images and summary on mount', async () => {
     render(<AttractionModal {...defaultProps} />)
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('Louvre%20Museum')
-      )
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('wiki-images'))
+    })
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('wiki-summary'))
+    })
+  })
+
+  it('shows Wikipedia summary text when loaded', async () => {
+    render(<AttractionModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByText(/Wikipedia summary text/i)).toBeInTheDocument()
     })
   })
 })

@@ -15,16 +15,21 @@ interface AttractionModalProps {
 
 export default function AttractionModal({ name, name_en, description, onClose }: AttractionModalProps) {
   const [images, setImages] = useState<WikiImage[]>([])
+  const [summary, setSummary] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/wiki-images?name=${encodeURIComponent(name_en)}`)
-      .then(r => r.json())
-      .then(data => {
-        setImages(data.images ?? [])
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
+    let cancelled = false
+    Promise.all([
+      fetch(`/api/wiki-images?name=${encodeURIComponent(name_en)}`).then(r => r.json()).catch(() => ({ images: [] })),
+      fetch(`/api/wiki-summary?name=${encodeURIComponent(name_en)}`).then(r => r.json()).catch(() => ({ summary: '' })),
+    ]).then(([imgData, sumData]) => {
+      if (cancelled) return
+      setImages(imgData.images ?? [])
+      setSummary(sumData.summary ?? '')
+      setLoading(false)
+    })
+    return () => { cancelled = true }
   }, [name_en])
 
   return (
@@ -84,10 +89,26 @@ export default function AttractionModal({ name, name_en, description, onClose }:
 
         {/* Content */}
         <div className="p-5">
-          <h2 className="text-xl font-extrabold text-slate-800 mb-3">{name}</h2>
-          {description ? (
-            <p className="text-sm text-slate-600 leading-relaxed">{description}</p>
-          ) : (
+          <h2 className="text-xl font-extrabold text-slate-800 mb-1">{name}</h2>
+          {name_en && name_en !== name && (
+            <p className="text-xs text-slate-400 mb-3">{name_en}</p>
+          )}
+
+          {summary && (
+            <div className="mb-4">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">📚 关于这个景点</div>
+              <p className="text-sm text-slate-600 leading-relaxed">{summary}</p>
+            </div>
+          )}
+
+          {description && (
+            <div>
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">💡 游览建议</div>
+              <p className="text-sm text-slate-600 leading-relaxed">{description}</p>
+            </div>
+          )}
+
+          {!summary && !description && (
             <p className="text-sm text-slate-400">暂无详细描述</p>
           )}
         </div>
