@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import YoutubeCard from './YoutubeCard'
+import DayCard from './DayCard'
 import { createClient } from '@/lib/supabase/client'
 import type { ItineraryContent, YoutubeVideo } from '@/lib/types'
 
@@ -119,17 +120,10 @@ export default function ItineraryStream() {
       <div className="grid grid-cols-[1fr_280px] gap-6">
         <div>
           {state.content ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <p className="text-slate-600 bg-indigo-50 p-4 rounded-xl">{state.content.summary}</p>
               {state.content.days.map((day, i) => (
-                <div key={i} className="bg-white rounded-xl p-4 shadow-sm border-l-4 border-indigo-400">
-                  <h3 className="font-bold text-slate-800 mb-2">{day.title}</h3>
-                  <ul className="space-y-1">
-                    {day.activities.map((act, j) => (
-                      <li key={j} className="text-sm text-slate-600">{act}</li>
-                    ))}
-                  </ul>
-                </div>
+                <DayCard key={i} day={day} index={i} defaultOpen={i === 0} />
               ))}
             </div>
           ) : (
