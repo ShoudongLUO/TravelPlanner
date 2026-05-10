@@ -1,7 +1,33 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash *)"
+      "Bash(bash *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(npm test *)",
+      "Bash(Get-ChildItem -Path D:\\\\travel_planner -Recurse -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(npm run *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\travel_planner\" -Recurse -Depth 2)",
+      "Bash(Select-Object -Property FullName)",
+      "Bash(Format-List)",
+      "Bash(npx tsc *)",
+      "Bash(cd /d D:\\\\travel_planner)",
+      "Bash(dir lib *)",
+      "Bash(dir __tests__)",
+      "Bash(cat)",
+      "Bash(node /tmp/check_validation.js)",
+      "Bash(cat jest.config.ts)",
+      "Bash(cat jest.config.js)",
+      "Bash(node -e \"require\\('@google/generative-ai'\\)\")",
+      "Bash(npx jest *)",
+      "Bash(node -e ' *)",
+      "Bash(grep -B1 -A5 '\"\\\\\\\\^@/')",
+      "Bash(git init *)",
+      "PowerShell(cmd /c \"dir D:\\\\travel_planner\")",
+      "PowerShell(cmd /c \"dir D:\\\\travel_planner\\\\app\\\\api\\\\itineraries\")",
+      "PowerShell(cmd /c \"dir D:\\\\travel_planner\\\\app\\\\api\\\\itineraries\\\\[id]\")",
+      "Bash(git stash *)"
     ]
   }
 }
