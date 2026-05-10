@@ -16,6 +16,13 @@ describe('buildUserPrompt', () => {
     expect(prompt).toContain('8000')
     expect(prompt).toContain('5')
   })
+
+  it('includes departure_city', () => {
+    const prompt = buildUserPrompt(baseRequest)
+    expect(prompt).toContain('上海')
+    expect(prompt).toContain('京都')
+    expect(prompt).toContain('8000')
+  })
 })
 
 describe('buildSystemPrompt', () => {

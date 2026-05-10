@@ -48,10 +48,16 @@ ${feedbackSection}`
 }
 
 export function buildUserPrompt(req: GenerateRequest): string {
-  return `目的地：${req.destination}
+  return `出发城市：${req.departure_city}
+目的地：${req.destination}
 出发日期：${req.start_date}
 旅行天数：${req.days} 天
 总预算：¥${req.budget} 元
+
+请根据从 ${req.departure_city} 出发的实际情况：
+1. 估算 ${req.departure_city}→${req.destination} 机票往返费用，纳入 transport 预算
+2. 在 Day 1 安排从 ${req.departure_city} 出发的交通方式（直飞/中转/高铁等）
+3. 如需中转，请在行程中标注中转城市
 
 请生成详细旅游攻略。`
 }
