@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import DayCard from '@/components/DayCard'
 import type { DayPlan } from '@/lib/types'
 
@@ -86,5 +86,21 @@ describe('DayCard', () => {
     const items = screen.getAllByText('卢浮宫')
     fireEvent.click(items[1]) // click the timeline item (second occurrence)
     expect(screen.getByRole('button', { name: '✕' })).toBeInTheDocument()
+  })
+
+  it('clicking chip fuzzy-matches a longer timeline name to get name_en', async () => {
+    const fuzzyDay: DayPlan = {
+      ...mockDay,
+      attractions: ['卢浮宫'],
+      timeline: [
+        { time: '11:00', name: '卢浮宫游览（建议2小时）', name_en: 'Louvre Museum', description: '世界最大博物馆' },
+      ],
+    }
+    render(<DayCard day={fuzzyDay} index={0} />)
+    fireEvent.click(screen.getByText('卢浮宫'))
+    // Modal opens and fetch is called with the matched name_en (Louvre%20Museum), not the Chinese chip name
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('Louvre%20Museum'))
+    })
   })
 })

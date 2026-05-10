@@ -18,7 +18,12 @@ interface DayCardProps {
 }
 
 function findTimelineItem(day: DayPlan, name: string): TimelineItem | undefined {
-  return day.timeline.find(t => t.name === name)
+  // Try exact match first
+  const exact = day.timeline.find(t => t.name === name)
+  if (exact) return exact
+  // Fall back to fuzzy match (Gemini may produce timeline names like "卢浮宫游览（建议2小时）"
+  // that contain the shorter chip name "卢浮宫", or vice versa)
+  return day.timeline.find(t => t.name.includes(name) || name.includes(t.name))
 }
 
 export default function DayCard({ day, index, defaultOpen = false }: DayCardProps) {
