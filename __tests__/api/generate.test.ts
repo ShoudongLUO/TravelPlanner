@@ -17,8 +17,8 @@ jest.mock('@/lib/youtube', () => ({
   ]),
 }))
 
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: jest.fn().mockResolvedValue({
+jest.mock('@supabase/ssr', () => ({
+  createServerClient: jest.fn().mockReturnValue({
     auth: { getUser: jest.fn().mockResolvedValue({ data: { user: null } }) },
     from: jest.fn().mockReturnValue({
       select: jest.fn().mockReturnThis(),

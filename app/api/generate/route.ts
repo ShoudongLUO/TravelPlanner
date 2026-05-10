@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
 import { streamItinerary, parseItineraryContent } from '@/lib/gemini'
 import { searchYoutubeVideos } from '@/lib/youtube'
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
 import type { GenerateRequest, ItineraryReview } from '@/lib/types'
+
+export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -15,7 +17,17 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  const supabase = await createClient()
+  // Edge-compatible Supabase client (reads cookies from request, no next/headers)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll() },
+        setAll() {},
+      },
+    }
+  )
   const { data: { user } } = await supabase.auth.getUser()
 
   let priorReviews: ItineraryReview[] = []
