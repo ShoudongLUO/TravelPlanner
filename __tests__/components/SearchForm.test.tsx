@@ -2,15 +2,33 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SearchForm from '@/components/SearchForm'
 
-// Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }))
 
+jest.mock('@/components/LocationInput', () =>
+  function MockLocationInput({ id, label, onChange }: {
+    id: string; label: string; placeholder: string; onChange: (v: string) => void
+  }) {
+    return (
+      <div>
+        <label htmlFor={id}>{label}</label>
+        <input id={id} onChange={e => onChange(e.target.value)} />
+      </div>
+    )
+  }
+)
+
 describe('SearchForm', () => {
-  it('renders all input fields', () => {
+  it('renders departure city and destination inputs', () => {
     render(<SearchForm />)
-    expect(screen.getByPlaceholderText(/目的地/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/出发城市/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/目的地/i)).toBeInTheDocument()
+  })
+
+  it('renders date, days and budget fields', () => {
+    render(<SearchForm />)
+    expect(screen.getByLabelText(/出发日期/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/旅行天数/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/总预算/i)).toBeInTheDocument()
   })
@@ -23,11 +41,11 @@ describe('SearchForm', () => {
   it('submit button enables when all fields filled', async () => {
     const user = userEvent.setup()
     render(<SearchForm />)
-    await user.type(screen.getByPlaceholderText(/目的地/i), '京都')
+    await user.type(screen.getByLabelText(/出发城市/i), '上海')
+    await user.type(screen.getByLabelText(/目的地/i), '京都')
     await user.type(screen.getByLabelText(/旅行天数/i), '5')
     await user.type(screen.getByLabelText(/总预算/i), '8000')
-    const dateInput = screen.getByLabelText(/出发日期/i)
-    await user.type(dateInput, '2025-06-15')
+    await user.type(screen.getByLabelText(/出发日期/i), '2025-06-15')
     expect(screen.getByRole('button', { name: /生成攻略/i })).toBeEnabled()
   })
 })
