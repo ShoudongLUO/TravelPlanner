@@ -1,3 +1,10 @@
+export interface Attraction {
+  name: string
+  name_en: string
+  description: string
+  icon: string
+}
+
 export interface BudgetBreakdown {
   transport: number
   accommodation: number
@@ -76,6 +83,7 @@ export interface GenerateRequest {
   start_date: string
   days: number
   budget: number
+  preferred_attractions: string[]
 }
 
 export type ReviewStatus = 'pending' | 'visited_no_review' | 'reviewed'

@@ -58,3 +58,43 @@ export function parseItineraryContent(raw: string): ItineraryContent {
   if (!jsonMatch) throw new Error('No JSON found in Gemini response')
   return JSON.parse(jsonMatch[0]) as ItineraryContent
 }
+
+export async function generateAttractions(destination: string): Promise<import('./types').Attraction[]> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured')
+
+  const prompt = `列出${destination}最值得去的 12 个景点，以 JSON 格式返回：
+
+{
+  "attractions": [
+    {
+      "name": "中文景点名",
+      "name_en": "English Attraction Name",
+      "description": "一句话简介（30字以内）",
+      "icon": "适合的 emoji（一个）"
+    }
+  ]
+}
+
+只返回 JSON，不加其他文字。`
+
+  const res = await fetch(
+    `${GEMINI_API_BASE}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.5 },
+      }),
+    }
+  )
+
+  if (!res.ok) throw new Error(`Gemini API error ${res.status}`)
+  const data = await res.json()
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) return []
+  const parsed = JSON.parse(jsonMatch[0])
+  return parsed.attractions ?? []
+}

@@ -1,4 +1,4 @@
-import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown } from '@/lib/types'
+import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown, Attraction } from '@/lib/types'
 
 describe('types', () => {
   it('Itinerary has required fields', () => {
@@ -30,6 +30,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      preferred_attractions: [],
     }
     expect(req.days).toBe(5)
   })
@@ -41,6 +42,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      preferred_attractions: [],
     }
     expect(req.departure_city).toBe('上海')
   })
@@ -93,5 +95,28 @@ describe('types', () => {
     expect(day.timeline[0].name_en).toBe('Louvre Museum')
     expect(day.lunch.name).toBe('Café Marly')
     expect(day.daily_budget).toBe(1800)
+  })
+
+  it('Attraction type has name, name_en, description, icon', () => {
+    const a: Attraction = {
+      name: '卢浮宫',
+      name_en: 'Louvre Museum',
+      description: '世界最大博物馆',
+      icon: '🏛',
+    }
+    expect(a.name).toBe('卢浮宫')
+    expect(a.icon).toBe('🏛')
+  })
+
+  it('GenerateRequest includes preferred_attractions', () => {
+    const req: GenerateRequest = {
+      departure_city: '上海',
+      destination: '巴黎',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 15000,
+      preferred_attractions: ['卢浮宫', '埃菲尔铁塔'],
+    }
+    expect(req.preferred_attractions).toHaveLength(2)
   })
 })
