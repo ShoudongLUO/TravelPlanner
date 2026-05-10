@@ -9,23 +9,28 @@ const mockWikiResponse = {
     {
       type: 'image',
       showInGallery: true,
-      titles: { canonical: 'File:Louvre_Museum.jpg' },
-      thumbnail: { source: 'https://upload.wikimedia.org/thumb/louvre.jpg', width: 1280, height: 800 },
-      original: { source: 'https://upload.wikimedia.org/louvre.jpg', mime: 'image/jpeg' },
+      title: 'File:Louvre_Museum.jpg',
+      caption: { text: 'Louvre Museum exterior' },
+      srcset: [
+        { src: '//upload.wikimedia.org/thumb/500px-louvre.jpg', scale: '1x' },
+        { src: '//upload.wikimedia.org/thumb/1280px-louvre.jpg', scale: '2x' },
+      ],
     },
     {
       type: 'image',
       showInGallery: false,
-      titles: { canonical: 'File:Icon.png' },
-      thumbnail: { source: 'https://upload.wikimedia.org/icon.png', width: 100, height: 100 },
-      original: { source: 'https://upload.wikimedia.org/icon.png', mime: 'image/png' },
+      title: 'File:Icon.png',
+      srcset: [
+        { src: '//upload.wikimedia.org/thumb/100px-icon.png', scale: '1x' },
+      ],
     },
     {
       type: 'image',
       showInGallery: true,
-      titles: { canonical: 'File:Map.svg' },
-      thumbnail: { source: 'https://upload.wikimedia.org/map.svg', width: 800, height: 600 },
-      original: { source: 'https://upload.wikimedia.org/map.svg', mime: 'image/svg+xml' },
+      title: 'File:Map.svg',
+      srcset: [
+        { src: '//upload.wikimedia.org/thumb/500px-map.svg', scale: '1x' },
+      ],
     },
   ],
 }
@@ -48,8 +53,9 @@ describe('GET /api/wiki-images', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.images).toHaveLength(1)
-    expect(body.images[0].url).toContain('louvre.jpg')
-    expect(body.images[0].caption).toBe('Louvre Museum')
+    expect(body.images[0].url).toContain('1280px-louvre.jpg')
+    expect(body.images[0].url).toMatch(/^https:/)
+    expect(body.images[0].caption).toBe('Louvre Museum exterior')
   })
 
   it('returns empty images when Wikipedia returns 404', async () => {

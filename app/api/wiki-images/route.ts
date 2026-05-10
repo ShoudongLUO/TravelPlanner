@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'edge'
 
+interface WikiSrcsetItem {
+  src: string
+  scale: string
+}
+
 interface WikiMediaItem {
   type: string
   showInGallery?: boolean
-  titles?: { canonical?: string }
-  thumbnail?: { source: string; width: number; height: number }
-  original?: { source: string; mime: string }
+  title?: string
+  caption?: { text?: string }
+  srcset?: WikiSrcsetItem[]
 }
 
 interface WikiImageResult {
@@ -38,18 +43,24 @@ export async function GET(request: NextRequest) {
       .filter(item =>
         item.type === 'image' &&
         item.showInGallery === true &&
-        item.thumbnail?.source &&
-        !item.original?.mime?.includes('svg') &&
-        (item.thumbnail?.width ?? 0) >= 300
+        item.title &&
+        !item.title.toLowerCase().endsWith('.svg') &&
+        item.srcset &&
+        item.srcset.length > 0
       )
       .slice(0, 5)
-      .map(item => ({
-        url: item.thumbnail!.source,
-        caption: (item.titles?.canonical ?? '')
-          .replace('File:', '')
+      .map(item => {
+        const hi = item.srcset!.find(s => s.scale === '2x') ?? item.srcset![item.srcset!.length - 1]
+        const fullUrl = hi.src.startsWith('//') ? `https:${hi.src}` : hi.src
+        const fallbackCaption = (item.title ?? '')
+          .replace(/^File:/, '')
           .replace(/_/g, ' ')
-          .replace(/\.[^.]+$/, ''),
-      }))
+          .replace(/\.[^.]+$/, '')
+        return {
+          url: fullUrl,
+          caption: item.caption?.text ?? fallbackCaption,
+        }
+      })
 
     return NextResponse.json({ images })
   } catch {
