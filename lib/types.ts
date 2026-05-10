@@ -7,10 +7,18 @@ export interface Attraction {
 
 export interface BudgetBreakdown {
   transport: number
+  local_transport: number
   accommodation: number
   food: number
   tickets: number
   misc: number
+}
+
+export interface AccommodationArea {
+  area: string
+  description: string
+  price_range: string
+  vibe: string
 }
 
 export interface TimelineItem {
@@ -41,6 +49,7 @@ export interface ItineraryContent {
   summary: string
   days: DayPlan[]
   budget_breakdown: BudgetBreakdown
+  accommodations: AccommodationArea[]
   tips: string[]
   xhs_queries: string[]
 }

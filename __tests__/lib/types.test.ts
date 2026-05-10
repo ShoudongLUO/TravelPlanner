@@ -1,4 +1,4 @@
-import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown, Attraction } from '@/lib/types'
+import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown, Attraction, AccommodationArea, ItineraryContent } from '@/lib/types'
 
 describe('types', () => {
   it('Itinerary has required fields', () => {
@@ -13,7 +13,8 @@ describe('types', () => {
       content: {
         summary: '',
         days: [],
-        budget_breakdown: { transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        budget_breakdown: { transport: 0, local_transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        accommodations: [],
         tips: [],
         xhs_queries: [],
       },
@@ -59,7 +60,8 @@ describe('types', () => {
       content: {
         summary: '',
         days: [],
-        budget_breakdown: { transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        budget_breakdown: { transport: 0, local_transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        accommodations: [],
         tips: [],
         xhs_queries: [],
       },
@@ -118,5 +120,39 @@ describe('types', () => {
       preferred_attractions: ['卢浮宫', '埃菲尔铁塔'],
     }
     expect(req.preferred_attractions).toHaveLength(2)
+  })
+
+  it('BudgetBreakdown includes local_transport', () => {
+    const budget: BudgetBreakdown = {
+      transport: 3000,
+      local_transport: 500,
+      accommodation: 2000,
+      food: 1500,
+      tickets: 800,
+      misc: 200,
+    }
+    expect(budget.local_transport).toBe(500)
+  })
+
+  it('AccommodationArea has area, description, price_range, vibe', () => {
+    const a: AccommodationArea = {
+      area: '玛黑区',
+      description: '步行 5 分钟到卢浮宫',
+      price_range: '¥800-1500/晚',
+      vibe: '文艺青年聚集',
+    }
+    expect(a.area).toBe('玛黑区')
+  })
+
+  it('ItineraryContent includes accommodations', () => {
+    const content: ItineraryContent = {
+      summary: '',
+      days: [],
+      budget_breakdown: { transport: 0, local_transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+      accommodations: [{ area: '玛黑区', description: '...', price_range: '...', vibe: '...' }],
+      tips: [],
+      xhs_queries: [],
+    }
+    expect(content.accommodations).toHaveLength(1)
   })
 })
