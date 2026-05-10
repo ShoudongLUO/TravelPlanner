@@ -35,7 +35,7 @@ export default function AccommodationTab({
     return (
       <div className="space-y-4">
         <div className="bg-indigo-50 rounded-xl p-4 text-sm text-slate-700">
-          住宿预算 <strong className="text-indigo-600">¥{accommodation_budget.toLocaleString()}</strong>
+          💰 住宿预算 <strong className="text-indigo-600">¥{accommodation_budget.toLocaleString()}</strong>
           <span className="text-slate-400 ml-2">（天均 ¥{perNight.toLocaleString()}）</span>
         </div>
         <div className="text-center py-8 text-slate-500 text-sm">
@@ -47,7 +47,7 @@ export default function AccommodationTab({
           rel="noopener noreferrer"
           className="block bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold py-3 rounded-xl text-center hover:shadow-lg transition-all"
         >
-          在 Airbnb 上搜索 {destination} 住宿
+          🏠 在 Airbnb 上搜索 {destination} 住宿
         </a>
       </div>
     )
@@ -78,7 +78,7 @@ export default function AccommodationTab({
             rel="noopener noreferrer"
             className="inline-block bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:shadow-md transition-all"
           >
-            在 Airbnb 上搜索此区域
+            🏠 在 Airbnb 上搜索此区域
           </a>
         </div>
       ))}
