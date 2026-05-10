@@ -76,7 +76,7 @@ ${feedbackSection}`
 }
 
 export function buildUserPrompt(req: GenerateRequest): string {
-  return `出发城市：${req.departure_city}
+  const base = `出发城市：${req.departure_city}
 目的地：${req.destination}
 出发日期：${req.start_date}
 旅行天数：${req.days} 天
@@ -88,4 +88,16 @@ export function buildUserPrompt(req: GenerateRequest): string {
 3. 如需中转，请在行程中标注中转城市
 
 请生成详细旅游攻略。`
+
+  if (!req.preferred_attractions || req.preferred_attractions.length === 0) {
+    return base
+  }
+
+  const list = req.preferred_attractions.map(a => `- ${a}`).join('\n')
+  return `${base}
+
+用户特别想去以下景点，请确保它们都安排在行程中：
+${list}
+
+其余时间可推荐其他亮点。`
 }

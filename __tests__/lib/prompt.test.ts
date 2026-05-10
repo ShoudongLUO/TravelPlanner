@@ -7,6 +7,7 @@ const baseRequest: GenerateRequest = {
   start_date: '2025-06-15',
   days: 5,
   budget: 8000,
+  preferred_attractions: [],
 }
 
 describe('buildUserPrompt', () => {
@@ -22,6 +23,21 @@ describe('buildUserPrompt', () => {
     expect(prompt).toContain('上海')
     expect(prompt).toContain('京都')
     expect(prompt).toContain('8000')
+  })
+
+  it('does not mention preferred attractions when list is empty', () => {
+    const prompt = buildUserPrompt({ ...baseRequest, preferred_attractions: [] })
+    expect(prompt).not.toContain('特别想去')
+  })
+
+  it('injects preferred attractions when provided', () => {
+    const prompt = buildUserPrompt({
+      ...baseRequest,
+      preferred_attractions: ['卢浮宫', '凡尔赛宫'],
+    })
+    expect(prompt).toContain('特别想去')
+    expect(prompt).toContain('卢浮宫')
+    expect(prompt).toContain('凡尔赛宫')
   })
 })
 
