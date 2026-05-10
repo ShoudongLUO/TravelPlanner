@@ -29,6 +29,7 @@ export interface YoutubeVideo {
 export interface Itinerary {
   id: string
   user_id: string
+  departure_city: string
   destination: string
   start_date: string
   days: number
@@ -51,6 +52,7 @@ export interface ItineraryReview {
 }
 
 export interface GenerateRequest {
+  departure_city: string
   destination: string
   start_date: string
   days: number
@@ -61,6 +63,7 @@ export type ReviewStatus = 'pending' | 'visited_no_review' | 'reviewed'
 
 export interface ItinerarySummary {
   id: string
+  departure_city: string
   destination: string
   start_date: string
   days: number

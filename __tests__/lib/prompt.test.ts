@@ -2,6 +2,7 @@ import { buildSystemPrompt, buildUserPrompt } from '@/lib/prompt'
 import type { GenerateRequest, ItineraryReview } from '@/lib/types'
 
 const baseRequest: GenerateRequest = {
+  departure_city: '上海',
   destination: '京都',
   start_date: '2025-06-15',
   days: 5,

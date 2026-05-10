@@ -5,6 +5,7 @@ describe('types', () => {
     const itinerary: Itinerary = {
       id: 'uuid',
       user_id: 'uuid',
+      departure_city: '上海',
       destination: '京都',
       start_date: '2025-06-15',
       days: 5,
@@ -24,11 +25,45 @@ describe('types', () => {
 
   it('GenerateRequest has required fields', () => {
     const req: GenerateRequest = {
+      departure_city: '上海',
       destination: '京都',
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
     }
     expect(req.days).toBe(5)
+  })
+
+  it('GenerateRequest includes departure_city', () => {
+    const req: GenerateRequest = {
+      departure_city: '上海',
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+    }
+    expect(req.departure_city).toBe('上海')
+  })
+
+  it('Itinerary includes departure_city', () => {
+    const it: Itinerary = {
+      id: 'uuid',
+      user_id: 'uuid',
+      departure_city: '上海',
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+      content: {
+        summary: '',
+        days: [],
+        budget_breakdown: { transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        tips: [],
+        xhs_queries: [],
+      },
+      youtube_videos: [],
+      created_at: '2025-05-08T00:00:00Z',
+    }
+    expect(it.departure_city).toBe('上海')
   })
 })
