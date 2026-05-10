@@ -59,4 +59,9 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('daily_budget')
     expect(prompt).not.toContain('"activities"')
   })
+
+  it('system prompt requires name_en in timeline items', () => {
+    const prompt = buildSystemPrompt([])
+    expect(prompt).toContain('name_en')
+  })
 })

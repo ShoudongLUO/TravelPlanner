@@ -13,7 +13,8 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
       "timeline": [
         {
           "time": "09:00",
-          "name": "景点或活动名称",
+          "name": "景点或活动名称（中文）",
+          "name_en": "Attraction English Name",
           "description": "详细说明，包含游览建议、门票价格、注意事项"
         }
       ],
@@ -50,6 +51,7 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
 - budget_breakdown 各项之和应等于总预算
 - attractions 列出当天主要景点名称（2-5个）
 - timeline 按时间顺序排列，包含具体时间点
+- timeline 中每个景点必须包含 name_en（Wikipedia 上的标准英文名称）
 - lunch 和 dinner 各选一家餐馆，综合考虑位置便利性和特色
 - 所有 daily_budget 之和应接近 budget_breakdown 中 food + tickets 的总和
 - tips 至少 3 条，包含签证、最佳季节、注意事项等
