@@ -80,4 +80,10 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt([])
     expect(prompt).toContain('name_en')
   })
+
+  it('system prompt includes local_transport and accommodations', () => {
+    const prompt = buildSystemPrompt([])
+    expect(prompt).toContain('local_transport')
+    expect(prompt).toContain('accommodations')
+  })
 })

@@ -37,11 +37,20 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
   ],
   "budget_breakdown": {
     "transport": 数字,
+    "local_transport": 数字,
     "accommodation": 数字,
     "food": 数字,
     "tickets": 数字,
     "misc": 数字
   },
+  "accommodations": [
+    {
+      "area": "区域名（中文）",
+      "description": "推荐理由（含距主要景点交通时长、特色）",
+      "price_range": "¥XXX-XXX/晚",
+      "vibe": "适合的人群和氛围"
+    }
+  ],
   "tips": ["实用贴士1", "贴士2", "贴士3"],
   "xhs_queries": ["小红书搜索关键词1", "关键词2"]
 }
@@ -54,6 +63,11 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
 - timeline 中每个景点必须包含 name_en（Wikipedia 上的标准英文名称）
 - lunch 和 dinner 各选一家餐馆，综合考虑位置便利性和特色
 - 所有 daily_budget 之和应接近 budget_breakdown 中 food + tickets 的总和
+- transport = 跨城交通（机票/高铁）
+- local_transport = 本地公共交通（地铁/公交/打车/景点间往返），按每天 ¥50-150 估算
+- accommodations 推荐 2-3 个适合的住宿区域，覆盖不同价位
+- 每个 accommodations 项包含 area（区域名）、description（位置和便利性）、price_range（¥XXX-XXX/晚）、vibe（氛围）
+- accommodation 预算项 = price_range 中位数 × 天数
 - tips 至少 3 条，包含签证、最佳季节、注意事项等
 - xhs_queries 提供 3 个小红书搜索词
 - 只返回 JSON，不加任何其他文字`
