@@ -51,7 +51,14 @@ describe('POST /api/generate', () => {
   it('returns SSE stream for valid request', async () => {
     const req = new NextRequest('http://localhost/api/generate', {
       method: 'POST',
-      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000 }),
+      body: JSON.stringify({
+        departure_city: '上海',
+        destination: '京都',
+        start_date: '2025-06-15',
+        days: 5,
+        budget: 8000,
+        preferred_attractions: ['清水寺', '伏见稻荷'],
+      }),
     })
     const res = await POST(req)
     expect(res.status).toBe(200)

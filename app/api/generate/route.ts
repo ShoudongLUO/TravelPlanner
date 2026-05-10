@@ -8,7 +8,7 @@ export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { departure_city, destination, start_date, days, budget } = body as GenerateRequest
+  const { departure_city, destination, start_date, days, budget, preferred_attractions = [] } = body as GenerateRequest
 
   if (!departure_city || !destination || !start_date || !days || !budget) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   const [youtubeVideos, stream] = await Promise.all([
     searchYoutubeVideos(destination),
-    (async () => streamItinerary({ departure_city, destination, start_date, days, budget }, priorReviews))(),
+    (async () => streamItinerary({ departure_city, destination, start_date, days, budget, preferred_attractions }, priorReviews))(),
   ])
 
   const readableStream = new ReadableStream({

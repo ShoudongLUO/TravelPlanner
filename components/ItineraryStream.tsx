@@ -29,6 +29,8 @@ export default function ItineraryStream() {
   const start_date = searchParams.get('start_date') ?? ''
   const days = Number(searchParams.get('days') ?? 1)
   const budget = Number(searchParams.get('budget') ?? 0)
+  const preferredAttractionsParam = searchParams.get('preferred_attractions') ?? ''
+  const preferred_attractions = preferredAttractionsParam ? preferredAttractionsParam.split(',').filter(Boolean) : []
 
   useEffect(() => {
     if (hasFetched.current || !destination || !departure_city) return
@@ -38,7 +40,7 @@ export default function ItineraryStream() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ departure_city, destination, start_date, days, budget }),
+        body: JSON.stringify({ departure_city, destination, start_date, days, budget, preferred_attractions }),
       })
       if (!res.body) return
 
@@ -66,7 +68,7 @@ export default function ItineraryStream() {
       }
     }
     generate()
-  }, [departure_city, destination, start_date, days, budget])
+  }, [departure_city, destination, start_date, days, budget, preferredAttractionsParam])
 
   const handleSave = async () => {
     if (!state.content) return
@@ -78,7 +80,7 @@ export default function ItineraryStream() {
     const res = await fetch('/api/itineraries', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ departure_city, destination, start_date, days, budget, content: state.content, youtube_videos: state.videos }),
+      body: JSON.stringify({ departure_city, destination, start_date, days, budget, preferred_attractions, content: state.content, youtube_videos: state.videos }),
     })
     if (res.ok) {
       const { itinerary } = await res.json()
