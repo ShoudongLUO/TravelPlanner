@@ -20,6 +20,20 @@ interface WikiImageResult {
   caption: string
 }
 
+async function fetchMediaList(lang: 'en' | 'zh', title: string): Promise<WikiMediaItem[] | null> {
+  const url = `https://${lang}.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'TravelAI/1.0 (travel-planner-app)' },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.items ?? []
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get('name')
   if (!name) {
@@ -28,16 +42,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const title = name.replace(/ /g, '_')
-    const url = `https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`
-
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'TravelAI/1.0 (travel-planner-app)' },
-    })
-
-    if (!res.ok) return NextResponse.json({ images: [] })
-
-    const data = await res.json()
-    const items: WikiMediaItem[] = data.items ?? []
+    // Try English Wikipedia first, fall back to Chinese Wikipedia
+    let items = await fetchMediaList('en', title)
+    if (items === null || items.length === 0) {
+      items = await fetchMediaList('zh', title)
+    }
+    if (items === null) return NextResponse.json({ images: [] })
 
     const images: WikiImageResult[] = items
       .filter(item =>
