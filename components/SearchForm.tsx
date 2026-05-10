@@ -20,8 +20,8 @@ export default function SearchForm() {
     Number(form.days) > 0 &&
     Number(form.budget) > 0
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const navigate = (path: '/preferences' | '/generate') => {
+    if (!isValid) return
     const params = new URLSearchParams({
       departure_city: form.departure_city,
       destination: form.destination,
@@ -29,11 +29,11 @@ export default function SearchForm() {
       days: form.days,
       budget: form.budget,
     })
-    router.push(`/generate?${params}`)
+    router.push(`${path}?${params}`)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl mx-auto">
+    <form onSubmit={e => e.preventDefault()} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl mx-auto">
       <div className="flex items-end gap-2 mb-4">
         <div className="flex-1">
           <LocationInput
@@ -95,13 +95,24 @@ export default function SearchForm() {
         />
       </div>
 
-      <button
-        type="submit"
-        disabled={!isValid}
-        className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg transition-all"
-      >
-        🚀 生成攻略 — 立即出发
-      </button>
+      <div className="grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          disabled={!isValid}
+          onClick={() => navigate('/preferences')}
+          className="col-span-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg transition-all text-sm"
+        >
+          🎯 浏览景点偏好（推荐）
+        </button>
+        <button
+          type="button"
+          disabled={!isValid}
+          onClick={() => navigate('/generate')}
+          className="bg-slate-100 text-slate-600 font-semibold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-200 transition-colors text-sm"
+        >
+          ⚡ 直接生成
+        </button>
+      </div>
     </form>
   )
 }

@@ -35,7 +35,7 @@ describe('SearchForm', () => {
 
   it('submit button is disabled when fields are empty', () => {
     render(<SearchForm />)
-    expect(screen.getByRole('button', { name: /生成攻略/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /浏览景点偏好/i })).toBeDisabled()
   })
 
   it('submit button enables when all fields filled', async () => {
@@ -46,6 +46,12 @@ describe('SearchForm', () => {
     await user.type(screen.getByLabelText(/旅行天数/i), '5')
     await user.type(screen.getByLabelText(/总预算/i), '8000')
     await user.type(screen.getByLabelText(/出发日期/i), '2025-06-15')
-    expect(screen.getByRole('button', { name: /生成攻略/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /浏览景点偏好/i })).toBeEnabled()
+  })
+
+  it('shows two action buttons (browse and direct)', () => {
+    render(<SearchForm />)
+    expect(screen.getByRole('button', { name: /浏览景点偏好/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /直接生成/i })).toBeInTheDocument()
   })
 })
