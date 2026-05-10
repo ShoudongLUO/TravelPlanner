@@ -2,9 +2,10 @@
 import { useState } from 'react'
 import YoutubeCard from './YoutubeCard'
 import DayCard from './DayCard'
+import AccommodationTab from './AccommodationTab'
 import type { Itinerary, ItineraryReview } from '@/lib/types'
 
-type Tab = 'itinerary' | 'budget' | 'tips' | 'videos'
+type Tab = 'itinerary' | 'accommodation' | 'budget' | 'tips' | 'videos'
 
 interface Props {
   itinerary: Itinerary & { itinerary_reviews: ItineraryReview[] }
@@ -17,6 +18,7 @@ export default function ItineraryDetail({ itinerary }: Props) {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'itinerary', label: '📅 行程' },
+    { key: 'accommodation', label: '🏨 住宿' },
     { key: 'budget', label: '💰 预算' },
     { key: 'tips', label: '💡 贴士' },
     { key: 'videos', label: '📹 视频' },
@@ -45,6 +47,16 @@ export default function ItineraryDetail({ itinerary }: Props) {
           </div>
         )}
 
+        {tab === 'accommodation' && (
+          <AccommodationTab
+            accommodations={content.accommodations ?? []}
+            destination={itinerary.destination}
+            start_date={itinerary.start_date}
+            days={itinerary.days}
+            accommodation_budget={content.budget_breakdown.accommodation}
+          />
+        )}
+
         {tab === 'budget' && (
           <div>
             <table className="w-full text-sm">
@@ -56,6 +68,7 @@ export default function ItineraryDetail({ itinerary }: Props) {
               <tbody>
                 {[
                   ['✈️ 交通', content.budget_breakdown.transport],
+                  ['🚇 本地交通', content.budget_breakdown.local_transport ?? 0],
                   ['🏨 住宿', content.budget_breakdown.accommodation],
                   ['🍱 餐饮', content.budget_breakdown.food],
                   ['🎭 景点', content.budget_breakdown.tickets],
