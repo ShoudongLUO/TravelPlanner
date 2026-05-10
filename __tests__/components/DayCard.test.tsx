@@ -26,6 +26,13 @@ const mockDay: DayPlan = {
 }
 
 describe('DayCard', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ images: [] }),
+    }) as jest.Mock
+  })
+
   it('shows title and attraction chips in collapsed state', () => {
     render(<DayCard day={mockDay} index={0} />)
     expect(screen.getByText('Day 1 · 抵达巴黎')).toBeInTheDocument()
@@ -64,5 +71,20 @@ describe('DayCard', () => {
     expect(screen.getByText('位置便利，法式轻餐')).toBeInTheDocument()
     expect(screen.getByText('法式经典地标')).toBeInTheDocument()
     expect(screen.getByText('¥1,800')).toBeInTheDocument()
+  })
+
+  it('clicking attraction chip opens modal', () => {
+    render(<DayCard day={mockDay} index={0} />)
+    // chip is the only '卢浮宫' when collapsed
+    fireEvent.click(screen.getByText('卢浮宫'))
+    expect(screen.getByRole('button', { name: '✕' })).toBeInTheDocument()
+  })
+
+  it('clicking timeline item opens modal', () => {
+    render(<DayCard day={mockDay} index={0} defaultOpen />)
+    // with defaultOpen, '卢浮宫' appears twice: chip + timeline item
+    const items = screen.getAllByText('卢浮宫')
+    fireEvent.click(items[1]) // click the timeline item (second occurrence)
+    expect(screen.getByRole('button', { name: '✕' })).toBeInTheDocument()
   })
 })
