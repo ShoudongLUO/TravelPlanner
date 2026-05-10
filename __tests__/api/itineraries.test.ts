@@ -8,6 +8,7 @@ import { NextRequest } from 'next/server'
 const mockItinerary = {
   id: 'itin-1',
   user_id: 'user-1',
+  departure_city: '上海',
   destination: '京都',
   start_date: '2025-06-15',
   days: 5,
@@ -65,7 +66,7 @@ describe('POST /api/itineraries', () => {
     })
     const req = new NextRequest('http://localhost/api/itineraries', {
       method: 'POST',
-      body: JSON.stringify({ destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
+      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
     })
     const res = await POST(req)
     expect(res.status).toBe(401)
@@ -75,7 +76,7 @@ describe('POST /api/itineraries', () => {
     ;(createClient as jest.Mock).mockResolvedValue(makeMockSupabase())
     const req = new NextRequest('http://localhost/api/itineraries', {
       method: 'POST',
-      body: JSON.stringify({ destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
+      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
     })
     const res = await POST(req)
     expect(res.status).toBe(201)

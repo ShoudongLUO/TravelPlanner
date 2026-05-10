@@ -23,20 +23,21 @@ export default function ItineraryStream() {
   const [saving, setSaving] = useState(false)
   const hasFetched = useRef(false)
 
+  const departure_city = searchParams.get('departure_city') ?? ''
   const destination = searchParams.get('destination') ?? ''
   const start_date = searchParams.get('start_date') ?? ''
   const days = Number(searchParams.get('days') ?? 1)
   const budget = Number(searchParams.get('budget') ?? 0)
 
   useEffect(() => {
-    if (hasFetched.current || !destination) return
+    if (hasFetched.current || !destination || !departure_city) return
     hasFetched.current = true
 
     async function generate() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ destination, start_date, days, budget }),
+        body: JSON.stringify({ departure_city, destination, start_date, days, budget }),
       })
       if (!res.body) return
 
@@ -64,7 +65,7 @@ export default function ItineraryStream() {
       }
     }
     generate()
-  }, [destination, start_date, days, budget])
+  }, [departure_city, destination, start_date, days, budget])
 
   const handleSave = async () => {
     if (!state.content) return
@@ -76,7 +77,7 @@ export default function ItineraryStream() {
     const res = await fetch('/api/itineraries', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ destination, start_date, days, budget, content: state.content, youtube_videos: state.videos }),
+      body: JSON.stringify({ departure_city, destination, start_date, days, budget, content: state.content, youtube_videos: state.videos }),
     })
     if (res.ok) {
       const { itinerary } = await res.json()
@@ -100,7 +101,7 @@ export default function ItineraryStream() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <span className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-1.5 rounded-full text-sm font-bold">
-          📍 {destination} · {days}天 · ¥{budget.toLocaleString()}
+          📍 {departure_city} → {destination} · {days}天 · ¥{budget.toLocaleString()}
         </span>
         {state.done && (
           <button onClick={handleSave} disabled={saving}

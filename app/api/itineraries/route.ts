@@ -28,15 +28,15 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
-  const { destination, start_date, days, budget, content, youtube_videos } = body
+  const { departure_city, destination, start_date, days, budget, content, youtube_videos } = body
 
-  if (!destination || !start_date || !days || !budget || !content) {
+  if (!departure_city || !destination || !start_date || !days || !budget || !content) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   const { data, error } = await supabase
     .from('itineraries')
-    .insert({ user_id: user.id, destination, start_date, days, budget, content, youtube_videos: youtube_videos ?? [] })
+    .insert({ user_id: user.id, departure_city, destination, start_date, days, budget, content, youtube_videos: youtube_videos ?? [] })
     .select()
     .single()
 

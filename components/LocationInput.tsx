@@ -21,7 +21,7 @@ export default function LocationInput({ id, label, placeholder, value, onChange 
   const [query, setQuery] = useState(value)
   const [nominatimResults, setNominatimResults] = useState<GeoResult[]>([])
   const [open, setOpen] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const localMatches = query.trim().length >= 1 ? filterCities(query) : []
