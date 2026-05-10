@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import YoutubeCard from './YoutubeCard'
+import DayCard from './DayCard'
 import type { Itinerary, ItineraryReview } from '@/lib/types'
 
 type Tab = 'itinerary' | 'budget' | 'tips' | 'videos'
@@ -36,15 +37,10 @@ export default function ItineraryDetail({ itinerary }: Props) {
 
       <div className="p-6">
         {tab === 'itinerary' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <p className="text-slate-600 bg-indigo-50 p-4 rounded-xl">{content.summary}</p>
             {content.days.map((day, i) => (
-              <div key={i} className="bg-slate-50 rounded-xl p-4 border-l-4 border-indigo-400">
-                <h3 className="font-bold text-slate-800 mb-2">{day.title}</h3>
-                <ul className="space-y-1">
-                  {day.activities.map((act, j) => <li key={j} className="text-sm text-slate-600">{act}</li>)}
-                </ul>
-              </div>
+              <DayCard key={i} day={day} index={i} defaultOpen={i === 0} />
             ))}
           </div>
         )}
