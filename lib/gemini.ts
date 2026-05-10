@@ -1,7 +1,7 @@
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import type { GenerateRequest, ItineraryContent, ItineraryReview } from './types'
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash'
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash'
 
 export async function* streamItinerary(
   request: GenerateRequest,
