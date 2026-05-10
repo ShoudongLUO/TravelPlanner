@@ -6,7 +6,7 @@ const mockDay: DayPlan = {
   title: 'Day 1 · 抵达巴黎',
   attractions: ['卢浮宫', '塞纳河'],
   timeline: [
-    { time: '09:00', name: '卢浮宫', description: '世界最大博物馆之一' },
+    { time: '09:00', name: '卢浮宫', name_en: 'Louvre Museum', description: '世界最大博物馆之一' },
   ],
   lunch: {
     name: 'Café Marly',

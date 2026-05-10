@@ -71,7 +71,7 @@ describe('types', () => {
     const day: DayPlan = {
       title: 'Day 1 · 抵达',
       attractions: ['卢浮宫', '塞纳河'],
-      timeline: [{ time: '09:00', name: '卢浮宫', description: '世界最大博物馆' }],
+      timeline: [{ time: '09:00', name: '卢浮宫', name_en: 'Louvre Museum', description: '世界最大博物馆' }],
       lunch: {
         name: 'Café Marly',
         location: '卢浮宫旁',
@@ -90,6 +90,7 @@ describe('types', () => {
     }
     expect(day.attractions).toHaveLength(2)
     expect(day.timeline[0].time).toBe('09:00')
+    expect(day.timeline[0].name_en).toBe('Louvre Museum')
     expect(day.lunch.name).toBe('Café Marly')
     expect(day.daily_budget).toBe(1800)
   })

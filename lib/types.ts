@@ -9,6 +9,7 @@ export interface BudgetBreakdown {
 export interface TimelineItem {
   time: string
   name: string
+  name_en: string
   description: string
 }
 
