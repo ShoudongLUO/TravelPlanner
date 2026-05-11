@@ -5,6 +5,10 @@ import { GET, POST } from '@/app/api/itineraries/route'
 import { GET as GET_DETAIL, DELETE } from '@/app/api/itineraries/[id]/route'
 import { NextRequest } from 'next/server'
 
+jest.mock('@/lib/geocode', () => ({
+  geocodeDestination: jest.fn().mockResolvedValue({ lat: 48.8566, lng: 2.3522, country: 'France' }),
+}))
+
 const mockItinerary = {
   id: 'itin-1',
   user_id: 'user-1',
@@ -17,6 +21,10 @@ const mockItinerary = {
   content: {},
   youtube_videos: [],
   created_at: '2025-05-08T00:00:00Z',
+  destination_lat: 48.8566,
+  destination_lng: 2.3522,
+  destination_country: 'France',
+  visited: false,
 }
 
 function makeMockSupabase(listData: unknown[] = [mockItinerary]) {
@@ -39,6 +47,7 @@ jest.mock('@/lib/supabase/server', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
+import { geocodeDestination } from '@/lib/geocode'
 
 describe('GET /api/itineraries', () => {
   it('returns 401 when not authenticated', async () => {

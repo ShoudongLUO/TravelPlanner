@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { geocodeDestination } from '@/lib/geocode'
 
 export async function GET(_request: NextRequest) {
   const supabase = await createClient()
@@ -34,9 +35,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  const geo = await geocodeDestination(destination as string)
+
   const { data, error } = await supabase
     .from('itineraries')
-    .insert({ user_id: user.id, departure_city, destination, start_date, days, budget, travelers, content, youtube_videos: youtube_videos ?? [] })
+    .insert({
+      user_id: user.id,
+      departure_city,
+      destination,
+      start_date,
+      days,
+      budget,
+      travelers,
+      content,
+      youtube_videos: youtube_videos ?? [],
+      destination_lat: geo?.lat ?? null,
+      destination_lng: geo?.lng ?? null,
+      destination_country: geo?.country ?? null,
+    })
     .select()
     .single()
 
