@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { streamItinerary, parseItineraryContent } from '@/lib/gemini'
 import { searchYoutubeVideos } from '@/lib/youtube'
 import { createServerClient } from '@supabase/ssr'
-import type { GenerateRequest, ItineraryReview } from '@/lib/types'
+import type { GenerateRequest, ItineraryReview, UserProfile } from '@/lib/types'
 
 export const runtime = 'edge'
 
@@ -42,10 +42,20 @@ export async function POST(request: NextRequest) {
     priorReviews = data ?? []
   }
 
+  let user_profile: UserProfile | undefined = undefined
+  if (user) {
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
+    user_profile = data ?? undefined
+  }
+
   const encoder = new TextEncoder()
   const [youtubeVideos, stream] = await Promise.all([
     searchYoutubeVideos(destination),
-    (async () => streamItinerary({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions }, priorReviews))(),
+    (async () => streamItinerary({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions, user_profile }, priorReviews))(),
   ])
 
   const readableStream = new ReadableStream({

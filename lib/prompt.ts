@@ -127,12 +127,33 @@ export function buildUserPrompt(req: GenerateRequest): string {
 
 请生成详细旅游攻略。`
 
+  let result = base
+
+  if (
+    req.user_profile &&
+    (req.user_profile.travel_styles?.length > 0 ||
+      req.user_profile.pace ||
+      req.user_profile.budget_style)
+  ) {
+    const stylesStr = req.user_profile.travel_styles?.join(' + ') || ''
+    result += `
+
+🎨 用户旅行风格：${stylesStr}
+⚡ 节奏偏好：${req.user_profile.pace}
+💰 消费风格：${req.user_profile.budget_style}
+
+请根据上述用户画像调整：
+- 推荐景点和餐馆时偏向用户的兴趣
+- 行程节奏匹配用户的节奏偏好
+- 餐厅和住宿的价位匹配消费风格`
+  }
+
   if (!req.preferred_attractions || req.preferred_attractions.length === 0) {
-    return base
+    return result
   }
 
   const list = req.preferred_attractions.map(a => `- ${a}`).join('\n')
-  return `${base}
+  return `${result}
 
 用户特别想去以下景点，请确保它们都安排在行程中：
 ${list}

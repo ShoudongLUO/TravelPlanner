@@ -46,6 +46,30 @@ describe('buildUserPrompt', () => {
     expect(prompt).toContain('4 人')
     expect(prompt).toContain('同行人数')
   })
+
+  it('injects user_profile when provided', () => {
+    const prompt = buildUserPrompt({
+      ...baseRequest,
+      user_profile: {
+        user_id: 'u',
+        travel_styles: ['文化深度', '美食爱好'],
+        pace: '慢节奏',
+        budget_style: '高端体验',
+        created_at: '',
+        updated_at: '',
+      },
+    })
+    expect(prompt).toContain('文化深度')
+    expect(prompt).toContain('美食爱好')
+    expect(prompt).toContain('慢节奏')
+    expect(prompt).toContain('高端体验')
+    expect(prompt).toContain('用户旅行风格')
+  })
+
+  it('does not inject user_profile when undefined', () => {
+    const prompt = buildUserPrompt(baseRequest)
+    expect(prompt).not.toContain('用户旅行风格')
+  })
 })
 
 describe('buildSystemPrompt', () => {

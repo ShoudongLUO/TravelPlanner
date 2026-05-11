@@ -42,7 +42,12 @@ export default function Navbar() {
       <Link href="/" className="font-extrabold text-indigo-500 text-lg">✈️ TravelAI</Link>
       <div className="flex items-center gap-6 text-sm text-slate-500">
         <Link href="/">发现</Link>
-        {user && <Link href="/itineraries">我的攻略</Link>}
+        {user && (
+          <>
+            <Link href="/itineraries">我的攻略</Link>
+            <Link href="/profile">我的画像</Link>
+          </>
+        )}
         {user ? (
           <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600">退出</button>
         ) : (
