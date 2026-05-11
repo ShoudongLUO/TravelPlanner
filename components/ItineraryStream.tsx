@@ -29,6 +29,7 @@ export default function ItineraryStream() {
   const start_date = searchParams.get('start_date') ?? ''
   const days = Number(searchParams.get('days') ?? 1)
   const budget = Number(searchParams.get('budget') ?? 0)
+  const travelers = Number(searchParams.get('travelers') ?? 2)
   const preferredAttractionsParam = searchParams.get('preferred_attractions') ?? ''
   const preferred_attractions = preferredAttractionsParam ? preferredAttractionsParam.split(',').filter(Boolean) : []
 
@@ -40,7 +41,7 @@ export default function ItineraryStream() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ departure_city, destination, start_date, days, budget, preferred_attractions }),
+        body: JSON.stringify({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions }),
       })
       if (!res.body) return
 
@@ -68,7 +69,7 @@ export default function ItineraryStream() {
       }
     }
     generate()
-  }, [departure_city, destination, start_date, days, budget, preferredAttractionsParam])
+  }, [departure_city, destination, start_date, days, budget, travelers, preferredAttractionsParam])
 
   const handleSave = async () => {
     if (!state.content) return
@@ -80,7 +81,7 @@ export default function ItineraryStream() {
     const res = await fetch('/api/itineraries', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ departure_city, destination, start_date, days, budget, preferred_attractions, content: state.content, youtube_videos: state.videos }),
+      body: JSON.stringify({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions, content: state.content, youtube_videos: state.videos }),
     })
     if (res.ok) {
       const { itinerary } = await res.json()
@@ -104,7 +105,7 @@ export default function ItineraryStream() {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center gap-3 mb-6">
         <span className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-1.5 rounded-full text-sm font-bold">
-          📍 {departure_city} → {destination} · {days}天 · ¥{budget.toLocaleString()}
+          📍 {departure_city} → {destination} · {days}天 · {travelers}人 · ¥{budget.toLocaleString()}
         </span>
         {state.done && (
           <button onClick={handleSave} disabled={saving}

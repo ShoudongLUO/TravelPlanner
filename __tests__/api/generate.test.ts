@@ -57,11 +57,21 @@ describe('POST /api/generate', () => {
         start_date: '2025-06-15',
         days: 5,
         budget: 8000,
+        travelers: 2,
         preferred_attractions: ['清水寺', '伏见稻荷'],
       }),
     })
     const res = await POST(req)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/event-stream')
+  })
+
+  it('returns 400 when travelers is missing', async () => {
+    const req = new NextRequest('http://localhost/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000 }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(400)
   })
 })

@@ -13,6 +13,7 @@ const mockItinerary = {
   start_date: '2025-06-15',
   days: 5,
   budget: 8000,
+  travelers: 2,
   content: {},
   youtube_videos: [],
   created_at: '2025-05-08T00:00:00Z',
@@ -66,7 +67,7 @@ describe('POST /api/itineraries', () => {
     })
     const req = new NextRequest('http://localhost/api/itineraries', {
       method: 'POST',
-      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
+      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, travelers: 2, content: {} }),
     })
     const res = await POST(req)
     expect(res.status).toBe(401)
@@ -76,7 +77,7 @@ describe('POST /api/itineraries', () => {
     ;(createClient as jest.Mock).mockResolvedValue(makeMockSupabase())
     const req = new NextRequest('http://localhost/api/itineraries', {
       method: 'POST',
-      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, content: {} }),
+      body: JSON.stringify({ departure_city: '上海', destination: '京都', start_date: '2025-06-15', days: 5, budget: 8000, travelers: 2, content: {} }),
     })
     const res = await POST(req)
     expect(res.status).toBe(201)
