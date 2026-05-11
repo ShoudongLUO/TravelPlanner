@@ -69,6 +69,7 @@ export interface Itinerary {
   start_date: string
   days: number
   budget: number
+  travelers: number
   content: ItineraryContent
   youtube_videos: YoutubeVideo[]
   created_at: string
@@ -92,6 +93,7 @@ export interface GenerateRequest {
   start_date: string
   days: number
   budget: number
+  travelers: number
   preferred_attractions: string[]
 }
 

@@ -10,6 +10,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      travelers: 2,
       content: {
         summary: '',
         days: [],
@@ -31,6 +32,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      travelers: 2,
       preferred_attractions: [],
     }
     expect(req.days).toBe(5)
@@ -43,6 +45,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      travelers: 2,
       preferred_attractions: [],
     }
     expect(req.departure_city).toBe('上海')
@@ -57,6 +60,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 8000,
+      travelers: 2,
       content: {
         summary: '',
         days: [],
@@ -117,6 +121,7 @@ describe('types', () => {
       start_date: '2025-06-15',
       days: 5,
       budget: 15000,
+      travelers: 2,
       preferred_attractions: ['卢浮宫', '埃菲尔铁塔'],
     }
     expect(req.preferred_attractions).toHaveLength(2)
@@ -154,5 +159,18 @@ describe('types', () => {
       xhs_queries: [],
     }
     expect(content.accommodations).toHaveLength(1)
+  })
+
+  it('GenerateRequest and Itinerary include travelers field', () => {
+    const req: GenerateRequest = {
+      departure_city: '上海',
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+      travelers: 4,
+      preferred_attractions: [],
+    }
+    expect(req.travelers).toBe(4)
   })
 })
