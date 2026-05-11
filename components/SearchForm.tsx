@@ -10,6 +10,7 @@ export default function SearchForm() {
     destination: '',
     start_date: '',
     days: '',
+    travelers: '2',
     budget: '',
   })
 
@@ -18,7 +19,8 @@ export default function SearchForm() {
     form.destination &&
     form.start_date &&
     Number(form.days) > 0 &&
-    Number(form.budget) > 0
+    Number(form.budget) > 0 &&
+    Number(form.travelers) > 0 && Number(form.travelers) <= 10
 
   const navigate = (path: '/preferences' | '/generate') => {
     if (!isValid) return
@@ -27,6 +29,7 @@ export default function SearchForm() {
       destination: form.destination,
       start_date: form.start_date,
       days: form.days,
+      travelers: form.travelers,
       budget: form.budget,
     })
     router.push(`${path}?${params}`)
@@ -82,17 +85,32 @@ export default function SearchForm() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-1 mb-4">
-        <label htmlFor="budget" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">💰 总预算（元）</label>
-        <input
-          id="budget"
-          type="number"
-          min={100}
-          className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
-          placeholder="¥"
-          value={form.budget}
-          onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
-        />
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="flex flex-col gap-1">
+          <label htmlFor="travelers" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">👥 同行人数</label>
+          <input
+            id="travelers"
+            type="number"
+            min={1}
+            max={10}
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            placeholder="人"
+            value={form.travelers}
+            onChange={e => setForm(f => ({ ...f, travelers: e.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="budget" className="text-xs font-semibold text-slate-400 uppercase tracking-wide">💰 总预算（团队总花费，元）</label>
+          <input
+            id="budget"
+            type="number"
+            min={100}
+            className="border-2 border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none bg-slate-50"
+            placeholder="¥"
+            value={form.budget}
+            onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2">

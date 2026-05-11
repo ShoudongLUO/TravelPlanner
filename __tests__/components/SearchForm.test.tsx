@@ -31,6 +31,7 @@ describe('SearchForm', () => {
     expect(screen.getByLabelText(/出发日期/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/旅行天数/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/总预算/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/同行人数/i)).toBeInTheDocument()
   })
 
   it('submit button is disabled when fields are empty', () => {
@@ -46,6 +47,8 @@ describe('SearchForm', () => {
     await user.type(screen.getByLabelText(/旅行天数/i), '5')
     await user.type(screen.getByLabelText(/总预算/i), '8000')
     await user.type(screen.getByLabelText(/出发日期/i), '2025-06-15')
+    await user.clear(screen.getByLabelText(/同行人数/i))
+    await user.type(screen.getByLabelText(/同行人数/i), '3')
     expect(screen.getByRole('button', { name: /浏览景点偏好/i })).toBeEnabled()
   })
 
@@ -53,5 +56,11 @@ describe('SearchForm', () => {
     render(<SearchForm />)
     expect(screen.getByRole('button', { name: /浏览景点偏好/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /直接生成/i })).toBeInTheDocument()
+  })
+
+  it('shows travelers input with number type', () => {
+    render(<SearchForm />)
+    const input = screen.getByLabelText(/同行人数/i) as HTMLInputElement
+    expect(input.type).toBe('number')
   })
 })
