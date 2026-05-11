@@ -95,6 +95,7 @@ export interface GenerateRequest {
   budget: number
   travelers: number
   preferred_attractions: string[]
+  user_profile?: UserProfile
 }
 
 export type ReviewStatus = 'pending' | 'visited_no_review' | 'reviewed'
@@ -108,4 +109,13 @@ export interface ItinerarySummary {
   budget: number
   created_at: string
   review_status: ReviewStatus
+}
+
+export interface UserProfile {
+  user_id: string
+  travel_styles: string[]
+  pace: string
+  budget_style: string
+  created_at: string
+  updated_at: string
 }

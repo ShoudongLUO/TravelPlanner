@@ -1,4 +1,4 @@
-import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown, Attraction, AccommodationArea, ItineraryContent } from '@/lib/types'
+import type { Itinerary, ItineraryReview, GenerateRequest, DayPlan, BudgetBreakdown, Attraction, AccommodationArea, ItineraryContent, UserProfile } from '@/lib/types'
 
 describe('types', () => {
   it('Itinerary has required fields', () => {
@@ -172,5 +172,31 @@ describe('types', () => {
       preferred_attractions: [],
     }
     expect(req.travelers).toBe(4)
+  })
+
+  it('UserProfile has all required fields', () => {
+    const profile: UserProfile = {
+      user_id: 'user-1',
+      travel_styles: ['文化深度', '美食爱好'],
+      pace: '平衡',
+      budget_style: '高端体验',
+      created_at: '2025-05-08T00:00:00Z',
+      updated_at: '2025-05-08T00:00:00Z',
+    }
+    expect(profile.travel_styles).toHaveLength(2)
+    expect(profile.pace).toBe('平衡')
+  })
+
+  it('GenerateRequest user_profile is optional', () => {
+    const req: GenerateRequest = {
+      departure_city: '上海',
+      destination: '京都',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 8000,
+      travelers: 2,
+      preferred_attractions: [],
+    }
+    expect(req.user_profile).toBeUndefined()
   })
 })
