@@ -21,6 +21,10 @@ describe('types', () => {
       },
       youtube_videos: [],
       created_at: '2025-05-08T00:00:00Z',
+      destination_lat: null,
+      destination_lng: null,
+      destination_country: null,
+      visited: false,
     }
     expect(itinerary.destination).toBe('京都')
   })
@@ -71,6 +75,10 @@ describe('types', () => {
       },
       youtube_videos: [],
       created_at: '2025-05-08T00:00:00Z',
+      destination_lat: null,
+      destination_lng: null,
+      destination_country: null,
+      visited: false,
     }
     expect(it.departure_city).toBe('上海')
   })
@@ -198,5 +206,34 @@ describe('types', () => {
       preferred_attractions: [],
     }
     expect(req.user_profile).toBeUndefined()
+  })
+
+  it('Itinerary supports map fields', () => {
+    const it: Itinerary = {
+      id: 'i',
+      user_id: 'u',
+      departure_city: '上海',
+      destination: '巴黎',
+      start_date: '2025-06-15',
+      days: 5,
+      budget: 15000,
+      travelers: 2,
+      content: {
+        summary: '',
+        days: [],
+        budget_breakdown: { transport: 0, local_transport: 0, accommodation: 0, food: 0, tickets: 0, misc: 0 },
+        accommodations: [],
+        tips: [],
+        xhs_queries: [],
+      },
+      youtube_videos: [],
+      created_at: '',
+      destination_lat: 48.8566,
+      destination_lng: 2.3522,
+      destination_country: 'France',
+      visited: true,
+    }
+    expect(it.destination_lat).toBe(48.8566)
+    expect(it.visited).toBe(true)
   })
 })

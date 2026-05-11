@@ -73,6 +73,10 @@ export interface Itinerary {
   content: ItineraryContent
   youtube_videos: YoutubeVideo[]
   created_at: string
+  destination_lat: number | null
+  destination_lng: number | null
+  destination_country: string | null
+  visited: boolean
 }
 
 export interface ItineraryReview {
