@@ -70,6 +70,28 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
 - accommodation 预算项 = price_range 中位数 × 天数
 - tips 至少 3 条，包含签证、最佳季节、注意事项等
 - xhs_queries 提供 3 个小红书搜索词
+
+**交通预算优化（重要）：**
+- local_transport 必须考虑当地最优交通方案：
+  - 比较「通票/卡」（如瑞士 Swiss Half Fare Card、东京地铁通票、欧铁通票、日票/周票）与「按次买票」的总花销
+  - 选择 days × 单次费用 vs 通票费用，挑最便宜的方案
+  - 在 tips 中明确说明所选方案、单人价格、天数适配性
+- transport（跨城）必须考虑：
+  - 经济舱往返机票 ×人数 + 机场往返交通
+  - 如多人同行（≥3），可在 tips 提及打车/网约车的性价比
+  - 含可参考的购票渠道和大致价位
+
+**Cross-check 要求（重要）：**
+- 生成完成后内部检查：tips 中提到的所有具体金额（含交通卡、门票、签证、专属服务等）必须已经在 budget_breakdown 对应类目中体现
+- 如果发现某个 tips 中的费用超出 budget_breakdown 估算，将 budget 调高至能覆盖
+- 例如：tips 写「半价卡 ¥960/人」时，local_transport ≥ 960 × travelers
+
+**人数缩放（重要）：**
+- accommodation = price_range 中位数 × 天数 × ceil(travelers / 2)（4人→2间房；2人→1间房；1人→1间房；3人→2间房）
+- food 通常 × travelers（每人独立餐食）
+- tickets 通常 × travelers（每人独立门票）
+- daily_budget 也要按人数缩放
+
 - 只返回 JSON，不加任何其他文字`
 
   if (reviews.length === 0) return base
@@ -94,12 +116,14 @@ export function buildUserPrompt(req: GenerateRequest): string {
 目的地：${req.destination}
 出发日期：${req.start_date}
 旅行天数：${req.days} 天
-总预算：¥${req.budget} 元
+👥 同行人数：${req.travelers} 人
+总预算：¥${req.budget} 元（团队总预算，含 ${req.travelers} 人所有花费）
 
-请根据从 ${req.departure_city} 出发的实际情况：
-1. 估算 ${req.departure_city}→${req.destination} 机票往返费用，纳入 transport 预算
+请根据从 ${req.departure_city} 出发的 ${req.travelers} 人团队实际情况：
+1. 估算 ${req.departure_city}→${req.destination} 机票往返费用 × ${req.travelers}，纳入 transport 预算
 2. 在 Day 1 安排从 ${req.departure_city} 出发的交通方式（直飞/中转/高铁等）
 3. 如需中转，请在行程中标注中转城市
+4. 行程安排按 ${req.travelers} 人团队的视角（餐馆人均消费 × 人数；住宿按 ceil(人数/2) 间房）
 
 请生成详细旅游攻略。`
 

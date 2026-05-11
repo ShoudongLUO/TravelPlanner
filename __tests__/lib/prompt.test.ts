@@ -7,6 +7,7 @@ const baseRequest: GenerateRequest = {
   start_date: '2025-06-15',
   days: 5,
   budget: 8000,
+  travelers: 2,
   preferred_attractions: [],
 }
 
@@ -38,6 +39,12 @@ describe('buildUserPrompt', () => {
     expect(prompt).toContain('特别想去')
     expect(prompt).toContain('卢浮宫')
     expect(prompt).toContain('凡尔赛宫')
+  })
+
+  it('includes travelers count in user prompt', () => {
+    const prompt = buildUserPrompt({ ...baseRequest, travelers: 4 })
+    expect(prompt).toContain('4 人')
+    expect(prompt).toContain('同行人数')
   })
 })
 
@@ -85,5 +92,12 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt([])
     expect(prompt).toContain('local_transport')
     expect(prompt).toContain('accommodations')
+  })
+
+  it('system prompt includes transport optimization and cross-check', () => {
+    const prompt = buildSystemPrompt([])
+    expect(prompt).toContain('Cross-check')
+    expect(prompt).toContain('通票')
+    expect(prompt).toContain('local_transport')
   })
 })
