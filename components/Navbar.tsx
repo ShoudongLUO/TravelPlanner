@@ -45,6 +45,7 @@ export default function Navbar() {
         {user && (
           <>
             <Link href="/itineraries">我的攻略</Link>
+            <Link href="/map">我的足迹</Link>
             <Link href="/profile">我的画像</Link>
           </>
         )}
