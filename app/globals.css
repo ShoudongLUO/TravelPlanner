@@ -24,3 +24,199 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ============================================================
+   Print styles — used by PrintControls + ItineraryPrintView
+   ============================================================ */
+@media print {
+  /* Reset page colors so we don't waste ink on screen gradients */
+  html, body {
+    background: white !important;
+    color: #111 !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 16mm 14mm;
+  }
+
+  .print-view {
+    color: #111;
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+
+  .print-header {
+    border-bottom: 2pt solid #444;
+    padding-bottom: 6pt;
+    margin-bottom: 10pt;
+  }
+
+  .print-title {
+    font-size: 20pt;
+    font-weight: 800;
+    margin: 0 0 4pt 0;
+  }
+
+  .print-subtitle {
+    font-size: 10pt;
+    color: #555;
+    margin: 0;
+  }
+
+  .print-summary {
+    margin-top: 8pt;
+    font-size: 10.5pt;
+    color: #333;
+  }
+
+  .print-section {
+    margin-top: 12pt;
+  }
+
+  .print-h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    border-left: 3pt solid #4f46e5;
+    padding-left: 6pt;
+    margin: 0 0 8pt 0;
+    break-after: avoid;
+  }
+
+  .print-day {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10pt;
+    padding: 6pt 0;
+    border-bottom: 1pt dotted #ccc;
+  }
+
+  .print-day-title {
+    font-size: 12pt;
+    font-weight: 700;
+    color: #4f46e5;
+    margin: 0 0 4pt 0;
+  }
+
+  .print-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-timeline-item {
+    display: flex;
+    gap: 8pt;
+    padding: 2pt 0;
+    break-inside: avoid;
+  }
+
+  .print-time {
+    flex: 0 0 36pt;
+    font-family: ui-monospace, monospace;
+    color: #666;
+    font-size: 9.5pt;
+    padding-top: 1pt;
+  }
+
+  .print-timeline-body {
+    flex: 1;
+  }
+
+  .print-poi-name {
+    font-weight: 600;
+    color: #222;
+  }
+
+  .print-poi-en {
+    font-weight: 400;
+    color: #777;
+    font-size: 9.5pt;
+  }
+
+  .print-poi-desc {
+    color: #555;
+    font-size: 10pt;
+  }
+
+  .print-meals {
+    margin-top: 4pt;
+    padding: 4pt 6pt;
+    background: #fafafa;
+    font-size: 10pt;
+  }
+
+  .print-meal {
+    margin: 1pt 0;
+  }
+
+  .print-daily-budget {
+    margin-top: 3pt;
+    font-size: 10pt;
+    text-align: right;
+    color: #555;
+  }
+
+  .print-accommodations {
+    list-style: disc;
+    padding-left: 14pt;
+    margin: 0;
+  }
+  .print-accommodations li {
+    margin-bottom: 4pt;
+    break-inside: avoid;
+  }
+
+  .print-budget-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+  }
+  .print-budget-table td {
+    padding: 3pt 6pt;
+    border-bottom: 1pt solid #eee;
+  }
+  .print-amount {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .print-budget-total td {
+    font-weight: 700;
+    border-top: 1.5pt solid #444;
+    border-bottom: none;
+    padding-top: 5pt;
+  }
+
+  .print-tips {
+    padding-left: 18pt;
+    margin: 0;
+  }
+  .print-tips li {
+    margin-bottom: 3pt;
+    break-inside: avoid;
+  }
+
+  .print-xhs {
+    font-size: 10pt;
+    color: #555;
+  }
+
+  .print-footer {
+    margin-top: 14pt;
+    padding-top: 6pt;
+    border-top: 1pt solid #ddd;
+    text-align: center;
+    font-size: 9pt;
+    color: #999;
+  }
+
+  /* Compact mode — hide elements marked print-full-only */
+  html.print-compact .print-full-only {
+    display: none !important;
+  }
+
+  /* Avoid breaking inside Tailwind classes when printing screen content (fallback) */
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+}

@@ -38,7 +38,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center">
+    <nav className="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center print:hidden">
       <Link href="/" className="font-extrabold text-indigo-500 text-lg">✈️ TravelAI</Link>
       <div className="flex items-center gap-6 text-sm text-slate-500">
         <Link href="/">发现</Link>
