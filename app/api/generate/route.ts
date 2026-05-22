@@ -71,7 +71,11 @@ export async function POST(request: NextRequest) {
           encoder.encode(`data: ${JSON.stringify({ type: 'done', content, youtube_videos: youtubeVideos })}\n\n`)
         )
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Generation failed'
+        const raw = error instanceof Error ? error.message : 'Generation failed'
+        const overloaded = /\b(503|429|502|504|UNAVAILABLE|overload|high demand)\b/i.test(raw)
+        const message = overloaded
+          ? 'Gemini 当前过载，重试多次仍未恢复，请稍后再试一次'
+          : raw
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'error', message })}\n\n`)
         )

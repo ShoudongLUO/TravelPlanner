@@ -1,7 +1,71 @@
 import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import type { GenerateRequest, ItineraryContent, ItineraryReview } from './types'
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash'
+const GEMINI_API_HOST = 'https://generativelanguage.googleapis.com/v1beta/models'
+const PRIMARY_MODEL = 'gemini-2.5-flash'
+const FALLBACK_MODEL = 'gemini-2.5-flash-lite'
+const MAX_ATTEMPTS_PER_MODEL = 3
+const RETRY_BACKOFF_MS = [500, 1500, 4000]
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
+
+interface CallGeminiOptions {
+  endpoint: 'streamGenerateContent' | 'generateContent'
+  body: unknown
+  apiKey: string
+  queryParams?: string
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function callGeminiWithFallback({
+  endpoint,
+  body,
+  apiKey,
+  queryParams = '',
+}: CallGeminiOptions): Promise<Response> {
+  const models = [PRIMARY_MODEL, FALLBACK_MODEL]
+  let lastError: { status: number; text: string } | null = null
+
+  for (const model of models) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
+      const suffix = queryParams ? `&${queryParams}` : ''
+      const url = `${GEMINI_API_HOST}/${model}:${endpoint}?key=${apiKey}${suffix}`
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (res.ok) return res
+
+        const errText = await res.text()
+        lastError = { status: res.status, text: errText }
+
+        if (!RETRYABLE_STATUS.has(res.status)) {
+          throw new Error(`Gemini API error ${res.status}: ${errText}`)
+        }
+        if (attempt < MAX_ATTEMPTS_PER_MODEL - 1) {
+          await sleep(RETRY_BACKOFF_MS[attempt])
+        }
+      } catch (err) {
+        const isFinalAttempt = attempt === MAX_ATTEMPTS_PER_MODEL - 1
+        if (err instanceof Error && err.message.startsWith('Gemini API error ')) {
+          throw err
+        }
+        lastError = { status: 0, text: err instanceof Error ? err.message : 'network error' }
+        if (!isFinalAttempt) {
+          await sleep(RETRY_BACKOFF_MS[attempt])
+        }
+      }
+    }
+  }
+
+  const status = lastError?.status ?? 503
+  const text = lastError?.text ?? 'Gemini unavailable after retries'
+  throw new Error(`Gemini API error ${status}: ${text}`)
+}
 
 export async function* streamItinerary(
   request: GenerateRequest,
@@ -10,23 +74,16 @@ export async function* streamItinerary(
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured')
 
-  const res = await fetch(
-    `${GEMINI_API_BASE}:streamGenerateContent?key=${apiKey}&alt=sse`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildSystemPrompt(priorReviews) }] },
-        contents: [{ role: 'user', parts: [{ text: buildUserPrompt(request) }] }],
-        generationConfig: { temperature: 0.7 },
-      }),
-    }
-  )
-
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Gemini API error ${res.status}: ${err}`)
-  }
+  const res = await callGeminiWithFallback({
+    endpoint: 'streamGenerateContent',
+    queryParams: 'alt=sse',
+    apiKey,
+    body: {
+      system_instruction: { parts: [{ text: buildSystemPrompt(priorReviews) }] },
+      contents: [{ role: 'user', parts: [{ text: buildUserPrompt(request) }] }],
+      generationConfig: { temperature: 0.7 },
+    },
+  })
 
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
@@ -78,19 +135,15 @@ export async function generateAttractions(destination: string): Promise<import('
 
 只返回 JSON，不加其他文字。`
 
-  const res = await fetch(
-    `${GEMINI_API_BASE}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.5 },
-      }),
-    }
-  )
+  const res = await callGeminiWithFallback({
+    endpoint: 'generateContent',
+    apiKey,
+    body: {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.5 },
+    },
+  })
 
-  if (!res.ok) throw new Error(`Gemini API error ${res.status}`)
   const data = await res.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   const jsonMatch = text.match(/\{[\s\S]*\}/)
