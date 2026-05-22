@@ -26,6 +26,14 @@ function findTimelineItem(day: DayPlan, name: string): TimelineItem | undefined 
   return day.timeline.find(t => t.name.includes(name) || name.includes(t.name))
 }
 
+// Gemini sometimes returns chip strings like "圣让大教堂 (Cathédrale Saint-Jean-Baptiste)"
+// — split into Chinese display name + English name so Wikipedia lookup can use the latter.
+function parseChip(chip: string): { cn: string; en: string | null } {
+  const m = chip.match(/^(.+?)\s*[(（]([^)）]+)[)）]\s*$/)
+  if (m) return { cn: m[1].trim(), en: m[2].trim() }
+  return { cn: chip, en: null }
+}
+
 export default function DayCard({ day, index, defaultOpen = false }: DayCardProps) {
   const [open, setOpen] = useState(defaultOpen)
   const [selected, setSelected] = useState<SelectedAttraction | null>(null)
@@ -60,14 +68,15 @@ export default function DayCard({ day, index, defaultOpen = false }: DayCardProp
         <div className="px-4 pb-3 pt-2 border-t border-slate-50">
           <div className="flex flex-wrap gap-1.5 mb-2">
             {(day.attractions ?? []).map((a, i) => {
-              const matched = findTimelineItem(day, a)
+              const parsed = parseChip(a)
+              const matched = findTimelineItem(day, parsed.cn) ?? findTimelineItem(day, a)
               return (
                 <span
                   key={i}
                   className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-0.5 rounded-full cursor-pointer hover:bg-indigo-100 transition-colors"
                   onClick={() => setSelected({
-                    name: a,
-                    name_en: matched?.name_en ?? a,
+                    name: parsed.cn,
+                    name_en: matched?.name_en ?? parsed.en ?? parsed.cn,
                     description: matched?.description ?? '',
                   })}
                 >

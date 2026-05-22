@@ -58,9 +58,10 @@ export function buildSystemPrompt(reviews: ItineraryReview[]): string {
 要求：
 - 预算单位为人民币元，所有金额为整数
 - budget_breakdown 各项之和应等于总预算
-- attractions 列出当天主要景点名称（2-5个）
+- attractions 列出当天主要景点名称（2-5个），**只用纯中文名称**，不要在 attractions 字符串里嵌入英文或括号（英文请放在 timeline.name_en 字段，不要写成 "圣让大教堂 (Cathédrale Saint-Jean-Baptiste)"）
 - timeline 按时间顺序排列，包含具体时间点
-- timeline 中每个景点必须包含 name_en（Wikipedia 上的标准英文名称）
+- timeline 中每个景点必须包含 name_en（Wikipedia 上的标准英文名称，例如 "Cathédrale Saint-Jean-Baptiste"）
+- timeline.name 保持简短中文名（如"圣让大教堂"），尽量与 attractions 中的写法一致，方便用户点击 attractions 标签时能匹配到 timeline 项
 - lunch 和 dinner 各选一家餐馆，综合考虑位置便利性和特色
 - 所有 daily_budget 之和应接近 budget_breakdown 中 food + tickets 的总和
 - transport = 跨城交通（机票/高铁）

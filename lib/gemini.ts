@@ -2,10 +2,10 @@ import { buildSystemPrompt, buildUserPrompt } from './prompt'
 import type { GenerateRequest, ItineraryContent, ItineraryReview } from './types'
 
 const GEMINI_API_HOST = 'https://generativelanguage.googleapis.com/v1beta/models'
-const PRIMARY_MODEL = 'gemini-2.5-flash'
-const FALLBACK_MODEL = 'gemini-2.5-flash-lite'
-const MAX_ATTEMPTS_PER_MODEL = 3
-const RETRY_BACKOFF_MS = [500, 1500, 4000]
+// Fallback order: balanced primary → lightest (lowest load) → highest quality
+const MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'] as const
+const MAX_ATTEMPTS_PER_MODEL = 2
+const RETRY_BACKOFF_MS = [500, 1500]
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
 interface CallGeminiOptions {
@@ -25,10 +25,9 @@ async function callGeminiWithFallback({
   apiKey,
   queryParams = '',
 }: CallGeminiOptions): Promise<Response> {
-  const models = [PRIMARY_MODEL, FALLBACK_MODEL]
   let lastError: { status: number; text: string } | null = null
 
-  for (const model of models) {
+  for (const model of MODEL_CHAIN) {
     for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_MODEL; attempt++) {
       const suffix = queryParams ? `&${queryParams}` : ''
       const url = `${GEMINI_API_HOST}/${model}:${endpoint}?key=${apiKey}${suffix}`
