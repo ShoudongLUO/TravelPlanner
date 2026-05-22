@@ -1,0 +1,25 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # Runs daily at 03:17 UTC (an off-peak, non-round minute to avoid GHA rush hour delays)
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/keepalive
+        run: |
+          set -euo pipefail
+          URL="https://travel-planner-pi-pearl.vercel.app/api/keepalive"
+          echo "Pinging $URL"
+          HTTP_STATUS=$(curl -sS -o response.json -w "%{http_code}" --max-time 30 "$URL")
+          echo "HTTP status: $HTTP_STATUS"
+          cat response.json
+          echo
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Keepalive ping failed with status $HTTP_STATUS"
+            exit 1
+          fi
