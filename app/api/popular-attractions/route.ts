@@ -9,8 +9,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'destination required' }, { status: 400 })
   }
 
+  const userApiKey = request.headers.get('x-user-gemini-key') || null
+
   try {
-    const attractions = await generateAttractions(destination)
+    const attractions = await generateAttractions(destination, userApiKey)
     return NextResponse.json({ attractions })
   } catch {
     return NextResponse.json({ attractions: [] })

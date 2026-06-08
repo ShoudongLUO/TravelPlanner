@@ -8,7 +8,12 @@ export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { departure_city, destination, start_date, days, budget, travelers, preferred_attractions = [] } = body as GenerateRequest
+  const {
+    departure_city, destination, start_date, days, budget, travelers,
+    preferred_attractions = [],
+    outbound_depart_time, outbound_arrive_time,
+    return_depart_time, return_arrive_time,
+  } = body as GenerateRequest
 
   if (!departure_city || !destination || !start_date || !days || !budget || !travelers) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -52,10 +57,21 @@ export async function POST(request: NextRequest) {
     user_profile = data ?? undefined
   }
 
+  const userApiKey = request.headers.get('x-user-gemini-key') || null
+
   const encoder = new TextEncoder()
   const [youtubeVideos, stream] = await Promise.all([
     searchYoutubeVideos(destination),
-    (async () => streamItinerary({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions, user_profile }, priorReviews))(),
+    (async () => streamItinerary(
+      {
+        departure_city, destination, start_date, days, budget, travelers,
+        preferred_attractions, user_profile,
+        outbound_depart_time, outbound_arrive_time,
+        return_depart_time, return_arrive_time,
+      },
+      priorReviews,
+      userApiKey
+    ))(),
   ])
 
   const readableStream = new ReadableStream({

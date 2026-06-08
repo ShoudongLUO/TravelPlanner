@@ -1,7 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ApiKeyModal from './ApiKeyModal'
 import LocationInput from './LocationInput'
+
+const DEFAULT_DEPART = '07:00'
+const DEFAULT_ARRIVE = '21:00'
 
 export default function SearchForm() {
   const router = useRouter()
@@ -12,7 +16,13 @@ export default function SearchForm() {
     days: '',
     travelers: '2',
     budget: '',
+    outbound_depart_time: DEFAULT_DEPART,
+    outbound_arrive_time: DEFAULT_ARRIVE,
+    return_depart_time: DEFAULT_DEPART,
+    return_arrive_time: DEFAULT_ARRIVE,
   })
+  const [timesOpen, setTimesOpen] = useState(false)
+  const [apiKeyOpen, setApiKeyOpen] = useState(false)
 
   const isValid =
     form.departure_city &&
@@ -31,11 +41,17 @@ export default function SearchForm() {
       days: form.days,
       travelers: form.travelers,
       budget: form.budget,
+      outbound_depart_time: form.outbound_depart_time,
+      outbound_arrive_time: form.outbound_arrive_time,
+      return_depart_time: form.return_depart_time,
+      return_arrive_time: form.return_arrive_time,
     })
     router.push(`${path}?${params}`)
   }
 
   return (
+    <>
+    {apiKeyOpen && <ApiKeyModal onClose={() => setApiKeyOpen(false)} />}
     <form onSubmit={e => e.preventDefault()} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl mx-auto">
       <div className="flex items-end gap-2 mb-4">
         <div className="flex-1">
@@ -113,6 +129,71 @@ export default function SearchForm() {
         </div>
       </div>
 
+      {/* Travel times (collapsible) */}
+      <div className="mb-4 border-2 border-slate-100 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setTimesOpen(o => !o)}
+          className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
+        >
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">✈️ 出发/到达时间（可选）</span>
+          <span className="text-slate-400 text-sm">
+            {form.outbound_depart_time} → {form.outbound_arrive_time}
+            <span className="ml-2 inline-block transition-transform" style={{ transform: timesOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>⌄</span>
+          </span>
+        </button>
+        {timesOpen && (
+          <div className="px-4 pb-4 pt-1 space-y-3 bg-slate-50">
+            <div>
+              <div className="text-xs font-bold text-slate-500 mb-1.5">🛫 去程（Day 1）</div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-0.5 text-xs text-slate-500">
+                  从家出发
+                  <input
+                    type="time"
+                    value={form.outbound_depart_time}
+                    onChange={e => setForm(f => ({ ...f, outbound_depart_time: e.target.value }))}
+                    className="border-2 border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:border-indigo-400 focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5 text-xs text-slate-500">
+                  到达目的地
+                  <input
+                    type="time"
+                    value={form.outbound_arrive_time}
+                    onChange={e => setForm(f => ({ ...f, outbound_arrive_time: e.target.value }))}
+                    className="border-2 border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:border-indigo-400 focus:outline-none"
+                  />
+                </label>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-500 mb-1.5">🛬 返程（最后一天）</div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-0.5 text-xs text-slate-500">
+                  离开目的地
+                  <input
+                    type="time"
+                    value={form.return_depart_time}
+                    onChange={e => setForm(f => ({ ...f, return_depart_time: e.target.value }))}
+                    className="border-2 border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:border-indigo-400 focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-0.5 text-xs text-slate-500">
+                  到家
+                  <input
+                    type="time"
+                    value={form.return_arrive_time}
+                    onChange={e => setForm(f => ({ ...f, return_arrive_time: e.target.value }))}
+                    className="border-2 border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:border-indigo-400 focus:outline-none"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-2">
         <button
           type="button"
@@ -131,6 +212,17 @@ export default function SearchForm() {
           ⚡ 直接生成
         </button>
       </div>
+
+      <div className="mt-4 text-center">
+        <button
+          type="button"
+          onClick={() => setApiKeyOpen(true)}
+          className="text-xs text-slate-400 hover:text-indigo-500 underline"
+        >
+          🔑 配置我的 API Key
+        </button>
+      </div>
     </form>
+    </>
   )
 }

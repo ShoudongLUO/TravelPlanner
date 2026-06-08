@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AttractionCard from './AttractionCard'
 import CustomTagInput from './CustomTagInput'
+import { userApiKeyHeader } from '@/lib/userApiKey'
 import type { Attraction } from '@/lib/types'
 
 export default function PreferencesClient() {
@@ -18,10 +19,17 @@ export default function PreferencesClient() {
   const start_date = searchParams.get('start_date') ?? ''
   const days = searchParams.get('days') ?? ''
   const budget = searchParams.get('budget') ?? ''
+  const travelers = searchParams.get('travelers') ?? '2'
+  const outbound_depart_time = searchParams.get('outbound_depart_time') ?? '07:00'
+  const outbound_arrive_time = searchParams.get('outbound_arrive_time') ?? '21:00'
+  const return_depart_time = searchParams.get('return_depart_time') ?? '07:00'
+  const return_arrive_time = searchParams.get('return_arrive_time') ?? '21:00'
 
   useEffect(() => {
     if (!destination) return
-    fetch(`/api/popular-attractions?destination=${encodeURIComponent(destination)}`)
+    fetch(`/api/popular-attractions?destination=${encodeURIComponent(destination)}`, {
+      headers: userApiKeyHeader(),
+    })
       .then(r => r.json())
       .then(data => {
         setAttractions(data.attractions ?? [])
@@ -47,7 +55,12 @@ export default function PreferencesClient() {
       start_date,
       days,
       budget,
+      travelers,
       preferred_attractions: allPreferred.join(','),
+      outbound_depart_time,
+      outbound_arrive_time,
+      return_depart_time,
+      return_arrive_time,
     })
     router.push(`/generate?${params}`)
   }

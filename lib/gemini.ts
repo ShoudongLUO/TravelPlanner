@@ -68,9 +68,10 @@ async function callGeminiWithFallback({
 
 export async function* streamItinerary(
   request: GenerateRequest,
-  priorReviews: ItineraryReview[]
+  priorReviews: ItineraryReview[],
+  userApiKey?: string | null
 ): AsyncGenerator<string> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured')
 
   const res = await callGeminiWithFallback({
@@ -115,8 +116,11 @@ export function parseItineraryContent(raw: string): ItineraryContent {
   return JSON.parse(jsonMatch[0]) as ItineraryContent
 }
 
-export async function generateAttractions(destination: string): Promise<import('./types').Attraction[]> {
-  const apiKey = process.env.GEMINI_API_KEY
+export async function generateAttractions(
+  destination: string,
+  userApiKey?: string | null
+): Promise<import('./types').Attraction[]> {
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured')
 
   const prompt = `列出${destination}最值得去的 12 个景点，以 JSON 格式返回：

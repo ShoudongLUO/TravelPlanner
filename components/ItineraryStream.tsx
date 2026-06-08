@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import YoutubeCard from './YoutubeCard'
 import DayCard from './DayCard'
 import { createClient } from '@/lib/supabase/client'
+import { userApiKeyHeader } from '@/lib/userApiKey'
 import type { ItineraryContent, YoutubeVideo } from '@/lib/types'
 
 interface StreamState {
@@ -32,6 +33,10 @@ export default function ItineraryStream() {
   const travelers = Number(searchParams.get('travelers') ?? 2)
   const preferredAttractionsParam = searchParams.get('preferred_attractions') ?? ''
   const preferred_attractions = preferredAttractionsParam ? preferredAttractionsParam.split(',').filter(Boolean) : []
+  const outbound_depart_time = searchParams.get('outbound_depart_time') ?? '07:00'
+  const outbound_arrive_time = searchParams.get('outbound_arrive_time') ?? '21:00'
+  const return_depart_time = searchParams.get('return_depart_time') ?? '07:00'
+  const return_arrive_time = searchParams.get('return_arrive_time') ?? '21:00'
 
   useEffect(() => {
     if (hasFetched.current || !destination || !departure_city) return
@@ -40,8 +45,11 @@ export default function ItineraryStream() {
     async function generate() {
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ departure_city, destination, start_date, days, budget, travelers, preferred_attractions }),
+        headers: { 'content-type': 'application/json', ...userApiKeyHeader() },
+        body: JSON.stringify({
+          departure_city, destination, start_date, days, budget, travelers, preferred_attractions,
+          outbound_depart_time, outbound_arrive_time, return_depart_time, return_arrive_time,
+        }),
       })
       if (!res.body) return
 

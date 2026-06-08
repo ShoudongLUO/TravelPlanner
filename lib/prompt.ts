@@ -113,12 +113,23 @@ ${feedbackSection}`
 }
 
 export function buildUserPrompt(req: GenerateRequest): string {
+  const outDepart = req.outbound_depart_time ?? '07:00'
+  const outArrive = req.outbound_arrive_time ?? '21:00'
+  const retDepart = req.return_depart_time ?? '07:00'
+  const retArrive = req.return_arrive_time ?? '21:00'
+
   const base = `出发城市：${req.departure_city}
 目的地：${req.destination}
 出发日期：${req.start_date}
 旅行天数：${req.days} 天
 👥 同行人数：${req.travelers} 人
 总预算：¥${req.budget} 元（团队总预算，含 ${req.travelers} 人所有花费）
+
+🛫 行程时间限制（重要 — 必须遵守）：
+- Day 1：${outDepart} 从 ${req.departure_city} 出发，${outArrive} 到达 ${req.destination}。Day 1 的 timeline 必须在 ${outArrive} 之后开始（通常是抵达酒店、办理入住、就近觅食），不要安排白天的景点。
+- Day ${req.days}：${retDepart} 离开 ${req.destination}，${retArrive} 回到 ${req.departure_city}。Day ${req.days} 的 timeline 必须在 ${retDepart} 之前结束（通常是退房、最后的早餐/纪念品 shopping、前往机场/车站）。
+- 中间天（Day 2 ~ Day ${Math.max(req.days - 1, 1)}）：完整一天，可以按正常 09:00-22:00 安排景点和餐饮。
+- 如果 ${req.days} 只有 1 或 2 天，依然必须把通勤时段（${outDepart}-${outArrive} 和 ${retDepart}-${retArrive}）让出来，timeline 只填能塞下的时段。
 
 请根据从 ${req.departure_city} 出发的 ${req.travelers} 人团队实际情况：
 1. 估算 ${req.departure_city}→${req.destination} 机票往返费用 × ${req.travelers}，纳入 transport 预算

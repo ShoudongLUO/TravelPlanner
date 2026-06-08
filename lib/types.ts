@@ -99,6 +99,11 @@ export interface GenerateRequest {
   budget: number
   travelers: number
   preferred_attractions: string[]
+  // HH:MM 24-hour. Optional in request; defaults applied in route handler.
+  outbound_depart_time?: string
+  outbound_arrive_time?: string
+  return_depart_time?: string
+  return_arrive_time?: string
   user_profile?: UserProfile
 }
 
