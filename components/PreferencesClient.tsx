@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AttractionCard from './AttractionCard'
 import CustomTagInput from './CustomTagInput'
-import { userApiKeyHeader } from '@/lib/userApiKey'
+import { llmConfigHeaders } from '@/lib/llmConfig'
 import type { Attraction } from '@/lib/types'
 
 export default function PreferencesClient() {
@@ -28,7 +28,7 @@ export default function PreferencesClient() {
   useEffect(() => {
     if (!destination) return
     fetch(`/api/popular-attractions?destination=${encodeURIComponent(destination)}`, {
-      headers: userApiKeyHeader(),
+      headers: llmConfigHeaders(),
     })
       .then(r => r.json())
       .then(data => {

@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import YoutubeCard from './YoutubeCard'
 import DayCard from './DayCard'
 import { createClient } from '@/lib/supabase/client'
-import { userApiKeyHeader } from '@/lib/userApiKey'
+import { llmConfigHeaders } from '@/lib/llmConfig'
 import type { ItineraryContent, YoutubeVideo } from '@/lib/types'
 
 interface StreamState {
@@ -45,7 +45,7 @@ export default function ItineraryStream() {
     async function generate() {
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...userApiKeyHeader() },
+        headers: { 'content-type': 'application/json', ...llmConfigHeaders() },
         body: JSON.stringify({
           departure_city, destination, start_date, days, budget, travelers, preferred_attractions,
           outbound_depart_time, outbound_arrive_time, return_depart_time, return_arrive_time,

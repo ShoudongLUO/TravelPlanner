@@ -1,8 +1,19 @@
 import { NextRequest } from 'next/server'
-import { streamItinerary, parseItineraryContent } from '@/lib/gemini'
+import { streamItinerary, parseItineraryContent, type LLMOverride, type LLMProvider } from '@/lib/gemini'
 import { searchYoutubeVideos } from '@/lib/youtube'
 import { createServerClient } from '@supabase/ssr'
 import type { GenerateRequest, ItineraryReview, UserProfile } from '@/lib/types'
+
+function readOverride(request: NextRequest): LLMOverride | undefined {
+  const provider = request.headers.get('x-llm-provider') as LLMProvider | null
+  const apiKey = request.headers.get('x-llm-key')
+  const model = request.headers.get('x-llm-model')
+  const baseUrl = request.headers.get('x-llm-base-url') || undefined
+  if (!provider || !apiKey || !model) return undefined
+  if (provider !== 'gemini' && provider !== 'openai_compat') return undefined
+  if (provider === 'openai_compat' && !baseUrl) return undefined
+  return { provider, apiKey, model, baseUrl }
+}
 
 export const runtime = 'edge'
 
@@ -57,7 +68,7 @@ export async function POST(request: NextRequest) {
     user_profile = data ?? undefined
   }
 
-  const userApiKey = request.headers.get('x-user-gemini-key') || null
+  const override = readOverride(request)
 
   const encoder = new TextEncoder()
   const [youtubeVideos, stream] = await Promise.all([
@@ -70,7 +81,7 @@ export async function POST(request: NextRequest) {
         return_depart_time, return_arrive_time,
       },
       priorReviews,
-      userApiKey
+      override
     ))(),
   ])
 
@@ -89,8 +100,11 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const raw = error instanceof Error ? error.message : 'Generation failed'
         const overloaded = /\b(503|429|502|504|UNAVAILABLE|overload|high demand)\b/i.test(raw)
+        const usingOverride = !!override
         const message = overloaded
-          ? 'Gemini 当前过载，重试多次仍未恢复，请稍后再试一次'
+          ? (usingOverride
+              ? `所选模型当前过载或不可用：${raw}`
+              : 'Gemini 当前过载，重试多次仍未恢复，请稍后再试一次')
           : raw
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'error', message })}\n\n`)
