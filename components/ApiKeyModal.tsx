@@ -27,6 +27,8 @@ export default function ApiKeyModal({ onClose }: Props) {
   const [models, setModels] = useState<string[]>([])
   const [listError, setListError] = useState<string | null>(null)
   const [listing, setListing] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [saved, setSaved] = useState(false)
   const [hasConfig, setHasConfig] = useState(false)
 
@@ -81,6 +83,37 @@ export default function ApiKeyModal({ onClose }: Props) {
     apiKey.trim().length > 0 &&
     model.trim().length > 0 &&
     (provider === 'gemini' || baseUrl.trim().length > 0)
+
+  const handleTest = async () => {
+    if (!isValidForSave) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/llm/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey.trim(),
+          model: model.trim(),
+          baseUrl: provider === 'openai_compat' ? baseUrl.trim() : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setTestResult({ ok: true, message: '✓ 模型可用 — 生成应该正常' })
+      } else {
+        setTestResult({ ok: false, message: data.error ?? '测试失败' })
+      }
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : 'network error',
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const handleSave = () => {
     if (!isValidForSave) return
@@ -245,7 +278,38 @@ export default function ApiKeyModal({ onClose }: Props) {
           )}
         </p>
 
+        {/* Test result banner */}
+        {testResult && (
+          <div
+            className={`mb-3 px-3 py-2 rounded-lg text-xs ${
+              testResult.ok
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-rose-50 text-rose-700'
+            }`}
+          >
+            {testResult.ok ? (
+              testResult.message
+            ) : (
+              <>
+                <div className="font-semibold mb-0.5">⚠ 模型测试失败</div>
+                <div className="break-words font-mono text-[10px] leading-snug">{testResult.message}</div>
+                <div className="mt-1.5 text-rose-600/80">
+                  常见原因：中转账号的「列模型接口」和「生成接口」不一致 —— 换一个模型名再试。
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={!isValidForSave || testing}
+            className="bg-slate-100 text-slate-700 font-semibold py-2 px-3 rounded-xl text-sm disabled:opacity-40 hover:bg-slate-200"
+          >
+            {testing ? '⏳' : '🧪 测试'}
+          </button>
           <button
             type="button"
             onClick={handleSave}

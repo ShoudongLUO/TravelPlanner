@@ -246,6 +246,60 @@ export async function generateAttractions(
   }
 }
 
+// ===================== Test model =====================
+
+/**
+ * Sends a single tiny non-streaming request to verify the model actually responds.
+ * Returns null on success; the upstream error message on failure.
+ */
+export async function testProviderModel(
+  provider: LLMProvider,
+  apiKey: string,
+  model: string,
+  baseUrl?: string
+): Promise<string | null> {
+  try {
+    if (provider === 'gemini') {
+      const url = `${GEMINI_HOST}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+          generationConfig: { temperature: 0, maxOutputTokens: 5 },
+        }),
+      })
+      if (!res.ok) return `${res.status}: ${await res.text()}`
+      return null
+    }
+
+    if (provider === 'openai_compat') {
+      if (!baseUrl) return 'base URL required'
+      const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5,
+          temperature: 0,
+          stream: false,
+        }),
+      })
+      if (!res.ok) return `${res.status}: ${await res.text()}`
+      return null
+    }
+
+    return `unknown provider: ${provider}`
+  } catch (err) {
+    return err instanceof Error ? err.message : 'network error'
+  }
+}
+
 // ===================== List models =====================
 
 export interface ListedModel {
