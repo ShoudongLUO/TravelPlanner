@@ -7,7 +7,9 @@ const MAX_QUERY_LENGTH = 200
 const UPSTREAM_TIMEOUT_MS = 10_000
 const USER_AGENT =
   'TravelPlanner/1.0 (https://github.com/ShoudongLUO/TravelPlanner)'
-const DECIMAL_COORDINATE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
+// Nominatim coordinates are strings. Accept JSON-number syntax only so values
+// such as hexadecimal numbers, leading plus signs, `.5`, and `1.` stay invalid.
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/
 
 interface GeoResult {
   display_name: string
@@ -39,10 +41,18 @@ function parseCoordinate(value: unknown): number | null {
   }
   if (typeof value !== 'string') return null
 
-  const coordinate = value.trim()
-  if (!DECIMAL_COORDINATE.test(coordinate)) return null
-  const parsed = Number(coordinate)
+  if (!JSON_NUMBER.test(value)) return null
+  const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+async function cancelResponseBody(body: ReadableStream<Uint8Array> | null) {
+  if (!body) return
+  try {
+    await body.cancel()
+  } catch {
+    // Cancellation is best-effort and must not replace the upstream status.
+  }
 }
 
 function parseResult(value: unknown): GeoResult | null {
@@ -114,13 +124,11 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  if (request.signal.aborted) return emptyResults()
+
   const controller = new AbortController()
   const abortFromRequest = () => controller.abort(request.signal.reason)
-  if (request.signal.aborted) {
-    abortFromRequest()
-  } else {
-    request.signal.addEventListener('abort', abortFromRequest, { once: true })
-  }
+  request.signal.addEventListener('abort', abortFromRequest, { once: true })
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
 
   try {
@@ -130,8 +138,14 @@ export async function GET(request: NextRequest) {
       signal: controller.signal,
     })
 
-    if (response.status === 429) return emptyResults(429)
-    if (!response.ok) return emptyResults()
+    if (response.status === 429) {
+      await cancelResponseBody(response.body)
+      return emptyResults(429)
+    }
+    if (!response.ok) {
+      await cancelResponseBody(response.body)
+      return emptyResults()
+    }
 
     let body: unknown
     try {

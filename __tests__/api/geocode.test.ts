@@ -21,6 +21,18 @@ function nominatimResponse(body: unknown, status = 200): Promise<Response> {
   )
 }
 
+function cancelableResponse(
+  status: number,
+  cancel: () => void | Promise<void>,
+): Promise<Response> {
+  return Promise.resolve(
+    new Response(
+      new ReadableStream<Uint8Array>({ cancel }),
+      { status },
+    ),
+  )
+}
+
 const mockNominatimResponse = [
   {
     display_name: '上海市, 中国',
@@ -161,6 +173,40 @@ describe('GET /api/geocode', () => {
     )
   })
 
+  it('accepts JSON-number exponents and rejects non-JSON coordinate strings', async () => {
+    const invalidCoordinates = ['', '0x10', 'Infinity', 'NaN', '.5', '1.', '+1', '01']
+    fetchMock.mockReturnValue(
+      nominatimResponse([
+        ...invalidCoordinates.map((lat, index) => ({
+          display_name: `invalid ${index}`,
+          lat,
+          lon: '2',
+        })),
+        {
+          display_name: 'valid exponent',
+          lat: '1e-7',
+          lon: '-2.5E+1',
+        },
+      ]),
+    )
+
+    const response = await GET(geocodeRequest('JSON numbers'))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      results: [
+        {
+          display_name: 'valid exponent',
+          city: 'valid exponent',
+          country: '',
+          country_code: '',
+          lat: 1e-7,
+          lng: -25,
+        },
+      ],
+    })
+  })
+
   it('sanitizes optional address fields and does not expose provider metadata', async () => {
     fetchMock.mockReturnValue(
       nominatimResponse([
@@ -249,6 +295,34 @@ describe('GET /api/geocode', () => {
     expect(await response.json()).toEqual({ results: [] })
   })
 
+  it.each([
+    [429, 429],
+    [500, 503],
+  ])(
+    'cancels an upstream %s response body before returning %s',
+    async (upstreamStatus, expectedStatus) => {
+      const cancel = jest.fn()
+      fetchMock.mockReturnValue(cancelableResponse(upstreamStatus, cancel))
+
+      const response = await GET(geocodeRequest('Paris'))
+
+      expect(response.status).toBe(expectedStatus)
+      expect(await response.json()).toEqual({ results: [] })
+      expect(cancel).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('preserves the retryable status when response body cancellation rejects', async () => {
+    const cancel = jest.fn().mockRejectedValue(new Error('cancel failed'))
+    fetchMock.mockReturnValue(cancelableResponse(429, cancel))
+
+    const response = await GET(geocodeRequest('Paris'))
+
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(429)
+    expect(await response.json()).toEqual({ results: [] })
+  })
+
   it('maps network failures to 503', async () => {
     fetchMock.mockRejectedValue(new TypeError('network unavailable'))
 
@@ -318,6 +392,19 @@ describe('GET /api/geocode', () => {
     const response = await responsePromise
 
     expect(response.status).toBe(503)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('does not fetch or schedule a timer for an already-aborted request', async () => {
+    jest.useFakeTimers()
+    const requestController = new AbortController()
+    requestController.abort()
+
+    const response = await GET(geocodeRequest('Paris', requestController.signal))
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ results: [] })
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(jest.getTimerCount()).toBe(0)
   })
 
