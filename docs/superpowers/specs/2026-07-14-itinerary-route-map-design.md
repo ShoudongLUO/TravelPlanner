@@ -17,6 +17,7 @@
 - 每个单日视图提供 Google Maps 路线链接，不需要 Google API Key。
 - “全部行程”可能超过移动端 Google Maps 的中途点限制，因此完整路线只在站内展示；外部导航按天提供。
 - 坐标首先通过行程已有的 `timeline.name_en` 批量查询 Wikipedia；没有 Wikipedia 坐标时才串行回退到 Nominatim，仍失败则跳过。
+- 用户已明确接受公共 Nominatim 回退在多用户/多实例环境下无法严格保证应用全局 1 请求/秒；本功能按当前小规模项目实施尽力而为的串行回退，并在风险中明确记录。
 - 不修改 Supabase 数据库、攻略 JSON 结构或 LLM prompt，旧攻略保持兼容。
 
 ## 用户界面
@@ -92,16 +93,16 @@
 
 1. 行程生成完成后渲染折叠卡片，不发起地理编码请求。
 2. 用户首次展开。
-3. 从 `day.attractions` 建立 occurrence，并在同日 timeline 中按名称精确匹配、再保守包含匹配，以取得 `name_en`。
-4. 读取 `travelai:route-location-cache:v1` 浏览器缓存。缓存 TTL 为 30 天，最多保留最近 300 个查询；过期、格式错误或越界坐标直接删除。
+3. 从 `day.attractions` 建立 occurrence，并与同日 `timeline[].name` 比较：优先采用唯一精确匹配；没有精确匹配时，仅当保守包含匹配也恰好只有一个结果，才采用该项的 `name_en`。零匹配或多个匹配都不猜测 Wikipedia 标题，直接进入 Nominatim 回退。
+4. 读取版本化浏览器缓存。Wikipedia 与 Nominatim 使用独立命名空间：`wiki:<normalized-title>` 和 `nominatim:<normalized-attraction>|<normalized-destination>`。缓存 TTL 为 30 天，最多保留最近 300 个查询；过期、格式错误或越界坐标直接删除。
 5. 将未命中且具有 `name_en` 的目标批量发送到 `/api/route-locations`。服务端使用 GET 调用 English Wikipedia Action API 的 `prop=coordinates`、`redirects=1`，每批最多 50 个标题，携带可识别 User-Agent，并通过 Next fetch cache 保存 30 天。
 6. `/api/route-locations` 映射 normalized/redirect title，返回每个输入标题对应的有限数值型 `lat`、`lng`；缺页或无坐标返回 `null`，不使整批失败。
 7. 对没有英文标题或 Wikipedia 返回 `null` 的目标，以“景点名 + 目的地”为查询条件，串行调用现有 `/api/geocode`，客户端调用间隔至少一秒。
 8. `/api/geocode` 保留现有候选数组契约并为每个候选增加数值型 `lat`、`lng`；过滤 NaN、纬度越界和经度越界，客户端确定性选择首个候选。
-9. 成功结果写入浏览器缓存并立即更新地图；确定性的“Wikipedia 无坐标”可随缓存保存，Nominatim 无结果缓存 24 小时；超时、429 和 5xx 不做负缓存。
+9. 成功结果写入对应命名空间缓存并立即更新地图。确定性的“Wikipedia 无坐标”写入 `wiki:` 负缓存，但该状态只跳过后续 Wikipedia 查询，仍必须读取或调用 Nominatim；Nominatim 无结果写入 `nominatim:` 负缓存 24 小时。任一来源的超时、429 和 5xx 都不做负缓存。
 10. 切换 Day 或全部视图只筛选已有结果，不重复请求。
 
-公开 Nominatim 要求最多每秒一次、标识应用并缓存结果。本功能将它限制为 Wikipedia 失败后的低频回退，并使用串行调用、浏览器缓存、上游响应缓存和现有应用 User-Agent。客户端限流无法在多实例部署下提供严格的全局速率保证，因此这是小规模项目的明确限制；流量增长前必须换成可保证配额的地理编码服务、自托管 Nominatim，或增加共享队列与缓存。不得将本实现描述为高并发生产级 Nominatim 集成。
+公开 Nominatim 要求最多每秒一次、标识应用并缓存结果。本功能将它限制为 Wikipedia 失败后的低频回退，并使用串行调用、浏览器缓存、上游响应缓存和现有应用 User-Agent。客户端限流无法在多实例部署下提供严格的全局速率保证；用户在 2026-07-14 明确选择并接受这一小规模、尽力而为的回退限制。流量增长前必须换成可保证配额的地理编码服务、自托管 Nominatim，或增加共享队列与缓存。不得将本实现描述为高并发生产级 Nominatim 集成。
 
 `/api/route-locations` 与 `/api/geocode` 都限制输入数量和查询长度，并为上游请求设置超时。上游 429 保留为可重试状态；其他 5xx 返回降级响应，不影响攻略页面。
 
@@ -170,8 +171,10 @@ Google Maps URL 使用 `api=1`，不调用付费 Directions API，也不需要 A
 - 折叠状态不请求坐标，首次展开才请求。
 - 浏览器缓存命中时不发请求。
 - Wikipedia 优先、Nominatim 回退、回退串行和重试行为。
+- 命中 Wikipedia-null 缓存时仍读取或执行 Nominatim 回退；两个来源的缓存状态互不覆盖。
 - 缓存 TTL、容量淘汰、有效负缓存与瞬时错误不负缓存。
 - occurrence 保留跨天重复和原顺序，locationTarget 去重查询，结果正确映射回所有 occurrence。
+- attraction 到 timeline 的唯一精确匹配、唯一包含匹配、零匹配与多重歧义匹配。
 - Day / 全部行程切换；全部视图每天独立折线。
 - 部分定位失败和完全失败的降级 UI。
 - Google Maps 外链与坐标成功状态解耦；覆盖 1、2、5、6 个及更多景点的顺序、编码与分段。
