@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { POST } from "@/app/api/route-locations/route";
 
 const WIKIPEDIA_ENDPOINT = "https://en.wikipedia.org/w/api.php";
