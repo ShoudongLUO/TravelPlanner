@@ -2,48 +2,153 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'edge'
 
-interface NominatimResult {
-  display_name: string
-  address?: {
-    city?: string
-    town?: string
-    village?: string
-    country?: string
-    country_code?: string
-  }
-}
+const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search'
+const MAX_QUERY_LENGTH = 200
+const UPSTREAM_TIMEOUT_MS = 10_000
+const USER_AGENT =
+  'TravelPlanner/1.0 (https://github.com/ShoudongLUO/TravelPlanner)'
+const DECIMAL_COORDINATE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
 
 interface GeoResult {
   display_name: string
   city: string
   country: string
   country_code: string
+  lat: number
+  lng: number
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringField(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value
+  }
+  return ''
+}
+
+function parseCoordinate(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value !== 'string') return null
+
+  const coordinate = value.trim()
+  if (!DECIMAL_COORDINATE.test(coordinate)) return null
+  const parsed = Number(coordinate)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseResult(value: unknown): GeoResult | null {
+  if (!isRecord(value) || typeof value.display_name !== 'string') return null
+  if (value.display_name.trim().length === 0) return null
+
+  const lat = parseCoordinate(value.lat)
+  const lng = parseCoordinate(value.lon)
+  if (
+    lat === null ||
+    lng === null ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
+    return null
+  }
+
+  const address = isRecord(value.address) ? value.address : {}
+  const displayCity = value.display_name.split(',')[0].trim()
+
+  return {
+    display_name: value.display_name,
+    city: firstNonEmptyString(
+      address.city,
+      address.town,
+      address.village,
+      displayCity,
+    ),
+    country: stringField(address.country),
+    country_code: stringField(address.country_code),
+    lat,
+    lng,
+  }
+}
+
+function emptyResults(status = 503) {
+  return NextResponse.json({ results: [] }, { status })
+}
+
+function nominatimUrl(query: string): string {
+  const searchParams = new URLSearchParams({
+    q: query,
+    format: 'json',
+    limit: '5',
+    addressdetails: '1',
+  })
+  return `${NOMINATIM_ENDPOINT}?${searchParams.toString()}`
 }
 
 export async function GET(request: NextRequest) {
-  const q = request.nextUrl.searchParams.get('q')
-  if (!q) {
+  const rawQuery = request.nextUrl.searchParams.get('q')
+  if (rawQuery === null || rawQuery.trim().length === 0) {
     return NextResponse.json({ error: 'q param required' }, { status: 400 })
   }
 
+  const query = rawQuery.trim()
+  if (rawQuery.length > MAX_QUERY_LENGTH) {
+    if (query.length <= MAX_QUERY_LENGTH) {
+      return NextResponse.json(
+        { error: 'q contains excessive surrounding whitespace' },
+        { status: 400 },
+      )
+    }
+    return NextResponse.json(
+      { error: `q must be at most ${MAX_QUERY_LENGTH} characters` },
+      { status: 413 },
+    )
+  }
+
+  const controller = new AbortController()
+  const abortFromRequest = () => controller.abort(request.signal.reason)
+  if (request.signal.aborted) {
+    abortFromRequest()
+  } else {
+    request.signal.addEventListener('abort', abortFromRequest, { once: true })
+  }
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
+
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&addressdetails=1`
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'TravelAI/1.0 (travel-planner-app)' },
+    const response = await fetch(nominatimUrl(query), {
+      method: 'GET',
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
     })
 
-    if (!res.ok) return NextResponse.json({ results: [] })
+    if (response.status === 429) return emptyResults(429)
+    if (!response.ok) return emptyResults()
 
-    const data: NominatimResult[] = await res.json()
-    const results: GeoResult[] = data.map(item => ({
-      display_name: item.display_name,
-      city: item.address?.city ?? item.address?.town ?? item.address?.village ?? item.display_name.split(',')[0],
-      country: item.address?.country ?? '',
-      country_code: item.address?.country_code ?? '',
-    }))
+    let body: unknown
+    try {
+      body = await response.json()
+    } catch {
+      return emptyResults()
+    }
+    if (!Array.isArray(body)) return emptyResults()
 
+    const results = body
+      .map(parseResult)
+      .filter((result): result is GeoResult => result !== null)
     return NextResponse.json({ results })
   } catch {
-    return NextResponse.json({ results: [] })
+    return emptyResults()
+  } finally {
+    clearTimeout(timeout)
+    request.signal.removeEventListener('abort', abortFromRequest)
   }
 }
