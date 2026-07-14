@@ -63,7 +63,10 @@ export function cacheKey(
     return `wiki:${normalizeKeyPart(value)}`
   }
 
-  return `nominatim:${normalizeKeyPart(value)}|${normalizeKeyPart(destination)}`
+  return `nominatim:${JSON.stringify([
+    normalizeKeyPart(value),
+    normalizeKeyPart(destination),
+  ])}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +115,14 @@ function isCacheKey(key: string): boolean {
   return key.startsWith('wiki:') || key.startsWith('nominatim:')
 }
 
+function sanitizeCoordinate(value: RouteCoordinate): RouteCoordinate {
+  return {
+    lat: value.lat,
+    lng: value.lng,
+    source: value.source,
+  }
+}
+
 function parseCacheEntry(key: string, value: unknown): CacheEntry | null {
   if (!isRecord(value)) {
     return null
@@ -140,7 +151,7 @@ function parseCacheEntry(key: string, value: unknown): CacheEntry | null {
   }
 
   return {
-    value: coordinate,
+    value: coordinate === null ? null : sanitizeCoordinate(coordinate),
     expiresAt: value.expiresAt,
     lastAccessed: value.lastAccessed,
   }
@@ -148,6 +159,16 @@ function parseCacheEntry(key: string, value: unknown): CacheEntry | null {
 
 function emptyCache(): CacheDocument {
   return { version: CACHE_VERSION, entries: {} }
+}
+
+function limitCacheEntries(
+  entries: Record<string, CacheEntry>
+): Record<string, CacheEntry> {
+  return Object.fromEntries(
+    Object.entries(entries)
+      .sort(([, left], [, right]) => right.lastAccessed - left.lastAccessed)
+      .slice(0, MAX_ENTRIES)
+  )
 }
 
 function readCacheDocument(storage: Storage): CacheDocument {
@@ -177,7 +198,10 @@ function readCacheDocument(storage: Storage): CacheDocument {
       }
     })
 
-    return { version: CACHE_VERSION, entries }
+    return {
+      version: CACHE_VERSION,
+      entries: limitCacheEntries(entries),
+    }
   } catch {
     return emptyCache()
   }
@@ -247,20 +271,11 @@ export function writeCachedRouteLocation(
   const currentTime = now()
   const document = readCacheDocument(storage)
   document.entries[key] = {
-    value,
+    value: value === null ? null : sanitizeCoordinate(value),
     expiresAt: currentTime + ttlFor(key, value),
     lastAccessed: currentTime,
   }
-
-  const orderedEntries = Object.entries(document.entries).sort(
-    ([, left], [, right]) => left.lastAccessed - right.lastAccessed
-  )
-  while (orderedEntries.length > MAX_ENTRIES) {
-    const oldest = orderedEntries.shift()
-    if (oldest) {
-      delete document.entries[oldest[0]]
-    }
-  }
+  document.entries = limitCacheEntries(document.entries)
 
   persistCacheDocument(storage, document)
 }
@@ -344,13 +359,18 @@ function parseWikipediaLocations(
   >()
   for (const title of titles) {
     if (!Object.prototype.hasOwnProperty.call(payload.locations, title)) {
+      // A missing title makes the batch contract transiently invalid; fall
+      // back for the whole batch rather than caching a partial response.
       return null
     }
     const value = payload.locations[title]
     if (value !== null && !isFiniteCoordinate(value)) {
       return null
     }
-    locations.set(title, value)
+    locations.set(
+      title,
+      value === null ? null : { lat: value.lat, lng: value.lng }
+    )
   }
   return locations
 }
@@ -366,10 +386,16 @@ function parseNominatimCoordinate(payload: unknown):
     return { kind: 'not-found' }
   }
 
-  const coordinate = payload.results.find(isFiniteCoordinate)
-  return coordinate
-    ? { kind: 'resolved', coordinate }
-    : { kind: 'retryable-error' }
+  for (const candidate of payload.results) {
+    if (isFiniteCoordinate(candidate)) {
+      return {
+        kind: 'resolved',
+        coordinate: { lat: candidate.lat, lng: candidate.lng },
+      }
+    }
+  }
+
+  return { kind: 'retryable-error' }
 }
 
 function fallbackQuery(target: RouteLocationTarget): string {
@@ -403,14 +429,38 @@ export async function loadRouteLocations(
   }
   throwIfAborted(signal)
 
+  const notify = (
+    targetKey: string,
+    coordinate: RouteCoordinate | null,
+    status: ResolutionStatus
+  ) => {
+    try {
+      onResult?.(targetKey, coordinate, status)
+    } catch {
+      // Observer failures do not change the committed resolution.
+    }
+  }
+
   const resolve = (
     state: TargetState,
     coordinate: RouteCoordinate | null,
     status: ResolutionStatus
   ) => {
+    throwIfAborted(signal)
     state.resolved = true
     results.set(state.target.key, coordinate)
-    onResult?.(state.target.key, coordinate, status)
+    throwIfAborted(signal)
+    notify(state.target.key, coordinate, status)
+    throwIfAborted(signal)
+  }
+
+  const cacheResult = (
+    key: string,
+    coordinate: RouteCoordinate | null
+  ) => {
+    throwIfAborted(signal)
+    writeCachedRouteLocation(storage, key, coordinate, now)
+    throwIfAborted(signal)
   }
 
   const wikipediaGroups = new Map<string, WikipediaGroup>()
@@ -469,27 +519,18 @@ export async function loadRouteLocations(
       batch.forEach((group) => {
         const location = locations.get(group.title)
         if (location === null) {
-          writeCachedRouteLocation(
-            storage,
-            group.cacheKey,
-            null,
-            now
-          )
+          cacheResult(group.cacheKey, null)
           return
         }
         if (!location) {
           return
         }
         const coordinate: RouteCoordinate = {
-          ...location,
+          lat: location.lat,
+          lng: location.lng,
           source: 'wikipedia',
         }
-        writeCachedRouteLocation(
-          storage,
-          group.cacheKey,
-          coordinate,
-          now
-        )
+        cacheResult(group.cacheKey, coordinate)
         group.states.forEach((state) =>
           resolve(state, coordinate, 'resolved')
         )
@@ -552,16 +593,17 @@ export async function loadRouteLocations(
         continue
       }
       if (parsed.kind === 'not-found') {
-        writeCachedRouteLocation(storage, nominatimKey, null, now)
+        cacheResult(nominatimKey, null)
         resolve(state, null, 'not-found')
         continue
       }
 
       const coordinate: RouteCoordinate = {
-        ...parsed.coordinate,
+        lat: parsed.coordinate.lat,
+        lng: parsed.coordinate.lng,
         source: 'nominatim',
       }
-      writeCachedRouteLocation(storage, nominatimKey, coordinate, now)
+      cacheResult(nominatimKey, coordinate)
       resolve(state, coordinate, 'resolved')
     } catch (error) {
       if (isAbortError(error, signal)) {

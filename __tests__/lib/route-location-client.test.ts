@@ -93,7 +93,13 @@ describe('route location cache', () => {
       'wiki:louvre museum'
     )
     expect(cacheKey('nominatim', '卢浮宫', '巴黎')).toBe(
-      'nominatim:卢浮宫|巴黎'
+      'nominatim:["卢浮宫","巴黎"]'
+    )
+  })
+
+  it('keeps Nominatim name and destination boundaries collision-free', () => {
+    expect(cacheKey('nominatim', 'a|b', 'c')).not.toBe(
+      cacheKey('nominatim', 'a', 'b|c')
     )
   })
 
@@ -268,6 +274,95 @@ describe('route location cache', () => {
       writeCachedRouteLocation(brokenWrite, key, null, () => 0)
     ).not.toThrow()
   })
+
+  it('strips unknown fields when writing and reading coordinates', () => {
+    const storage = new MemoryStorage()
+    const key = cacheKey('wikipedia', 'Sanitized Place')
+    const taintedCoordinate = {
+      lat: 1,
+      lng: 2,
+      source: 'wikipedia',
+      metadata: { private: true },
+    } as RouteCoordinate
+
+    writeCachedRouteLocation(storage, key, taintedCoordinate, () => 0)
+    expect(readCachedRouteLocation(storage, key, () => 1)).toEqual({
+      found: true,
+      value: { lat: 1, lng: 2, source: 'wikipedia' },
+    })
+
+    const raw = JSON.parse(
+      storage.getItem('travelai:route-location-cache:v1') ?? '{}'
+    ) as { entries: Record<string, { value: unknown }> }
+    expect(raw.entries[key].value).toEqual({
+      lat: 1,
+      lng: 2,
+      source: 'wikipedia',
+    })
+
+    storage.setItem(
+      'travelai:route-location-cache:v1',
+      JSON.stringify({
+        version: 1,
+        entries: {
+          [key]: {
+            value: {
+              lat: 3,
+              lng: 4,
+              source: 'wikipedia',
+              nested: { upstream: 'discard' },
+            },
+            expiresAt: 1_000,
+            lastAccessed: 0,
+          },
+        },
+      })
+    )
+
+    expect(readCachedRouteLocation(storage, key, () => 2)).toEqual({
+      found: true,
+      value: { lat: 3, lng: 4, source: 'wikipedia' },
+    })
+    const persisted = JSON.parse(
+      storage.getItem('travelai:route-location-cache:v1') ?? '{}'
+    ) as { entries: Record<string, { value: unknown }> }
+    expect(persisted.entries[key].value).toEqual({
+      lat: 3,
+      lng: 4,
+      source: 'wikipedia',
+    })
+  })
+
+  it('trims an externally oversized valid cache before persisting it', () => {
+    const storage = new MemoryStorage()
+    const entries = Object.fromEntries(
+      Array.from({ length: 302 }, (_, index) => [
+        cacheKey('wikipedia', `External ${index}`),
+        {
+          value: { lat: 1, lng: 2, source: 'wikipedia' },
+          expiresAt: 10_000,
+          lastAccessed: index,
+        },
+      ])
+    )
+    storage.setItem(
+      'travelai:route-location-cache:v1',
+      JSON.stringify({ version: 1, entries })
+    )
+    const newestKey = cacheKey('wikipedia', 'External 301')
+
+    expect(
+      readCachedRouteLocation(storage, newestKey, () => 500).found
+    ).toBe(true)
+    const persisted = JSON.parse(
+      storage.getItem('travelai:route-location-cache:v1') ?? '{}'
+    ) as { entries: Record<string, unknown> }
+    expect(Object.keys(persisted.entries)).toHaveLength(300)
+    expect(persisted.entries[newestKey]).toBeDefined()
+    expect(
+      persisted.entries[cacheKey('wikipedia', 'External 0')]
+    ).toBeUndefined()
+  })
 })
 
 describe('loadRouteLocations', () => {
@@ -363,6 +458,85 @@ describe('loadRouteLocations', () => {
     )
   })
 
+  it('isolates observer exceptions after committing and caching a result', async () => {
+    const storage = new MemoryStorage()
+    const target = wikiTarget(3)
+    const onResult = jest.fn(() => {
+      throw new Error('observer failed')
+    })
+    const fetcher = asFetcher(async () =>
+      fakeResponse({
+        locations: {
+          'Place 3': {
+            lat: 12,
+            lng: 34,
+            extra: { shouldNotLeak: true },
+          },
+        },
+      })
+    )
+
+    const results = await loadRouteLocations([target], {
+      fetcher,
+      storage,
+      signal: new AbortController().signal,
+      now: () => 0,
+      onResult,
+    })
+
+    const expected = { lat: 12, lng: 34, source: 'wikipedia' }
+    expect(results.get(target.key)).toEqual(expected)
+    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(
+      readCachedRouteLocation(
+        storage,
+        cacheKey('wikipedia', target.wikiTitle ?? ''),
+        () => 1
+      )
+    ).toEqual({ found: true, value: expected })
+  })
+
+  it('stops a Wikipedia batch when an observer synchronously aborts', async () => {
+    const storage = new MemoryStorage()
+    const controller = new AbortController()
+    const targets = [wikiTarget(0), wikiTarget(1)]
+    const onResult = jest.fn(() => controller.abort())
+    const fetcher = asFetcher(async () =>
+      fakeResponse({
+        locations: {
+          'Place 0': { lat: 1, lng: 2 },
+          'Place 1': { lat: 3, lng: 4 },
+        },
+      })
+    )
+
+    await expect(
+      loadRouteLocations(targets, {
+        fetcher,
+        storage,
+        signal: controller.signal,
+        now: () => 0,
+        onResult,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(onResult).toHaveBeenCalledTimes(1)
+    expect(
+      readCachedRouteLocation(
+        storage,
+        cacheKey('wikipedia', targets[0].wikiTitle ?? ''),
+        () => 1
+      ).found
+    ).toBe(true)
+    expect(
+      readCachedRouteLocation(
+        storage,
+        cacheKey('wikipedia', targets[1].wikiTitle ?? ''),
+        () => 1
+      ).found
+    ).toBe(false)
+  })
+
   it('falls back after a cached Wikipedia null and uses the first valid candidate', async () => {
     const storage = new MemoryStorage()
     const target = wikiTarget(2)
@@ -378,7 +552,11 @@ describe('loadRouteLocations', () => {
         results: [
           { lat: 91, lng: 0 },
           { lat: Number.NaN, lng: 10 },
-          { lat: 48.861, lng: 2.335 },
+          {
+            lat: 48.861,
+            lng: 2.335,
+            address: { private: 'discard' },
+          },
           { lat: 40, lng: 3 },
         ],
       })
@@ -492,6 +670,29 @@ describe('loadRouteLocations', () => {
       '地点 1, 京都',
       '地点 2, 京都',
     ])
+  })
+
+  it('does not wait again when the preceding fallback took at least 1000ms', async () => {
+    const targets = [fallbackTarget(0), fallbackTarget(1)]
+    let clock = 0
+    const starts: number[] = []
+    const wait = jest.fn(async () => undefined)
+    const fetcher = asFetcher(async () => {
+      starts.push(clock)
+      clock += 1_000
+      return fakeResponse({ results: [{ lat: 10, lng: 20 }] })
+    })
+
+    await loadRouteLocations(targets, {
+      fetcher,
+      storage: new MemoryStorage(),
+      signal: new AbortController().signal,
+      now: () => clock,
+      wait,
+    })
+
+    expect(starts).toEqual([0, 1_000])
+    expect(wait).not.toHaveBeenCalled()
   })
 
   it('continues after one fallback fails', async () => {
