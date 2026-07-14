@@ -90,11 +90,11 @@ function isFiniteCoordinate(
 }
 
 function isRouteCoordinate(value: unknown): value is RouteCoordinate {
-  return (
-    isFiniteCoordinate(value) &&
-    isRecord(value) &&
-    (value.source === 'wikipedia' || value.source === 'nominatim')
-  )
+  if (!isRecord(value) || !isFiniteCoordinate(value)) {
+    return false
+  }
+
+  return value.source === 'wikipedia' || value.source === 'nominatim'
 }
 
 function coordinateMatchesKey(
