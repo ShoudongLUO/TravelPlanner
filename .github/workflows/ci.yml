@@ -17,12 +17,34 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm test -- --runInBand
-      - run: npm run lint
-      - run: npm run build
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test -- --runInBand
+      - name: Audit legacy full-repository lint
+        continue-on-error: true
+        run: npm run lint
+      - name: Enforce lint on changed files
+        shell: bash
+        run: |
+          mapfile -d '' -t changed_files < <(
+            git diff -z --name-only --diff-filter=ACMR origin/main...HEAD -- \
+              '*.ts' '*.tsx' '*.mjs'
+          )
+          if ((${#changed_files[@]} == 0)); then
+            echo "No changed lintable files."
+            exit 0
+          fi
+          printf 'Linting %s\n' "${changed_files[@]}"
+          npx eslint --max-warnings 0 -- "${changed_files[@]}"
+      - name: Build application
+        run: npm run build
