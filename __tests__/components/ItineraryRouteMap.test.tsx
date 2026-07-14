@@ -6,8 +6,14 @@ import { loadRouteLocations } from '@/lib/route-location-client'
 import type { RouteCoordinate } from '@/lib/itinerary-route'
 import type { DayPlan, ItineraryContent } from '@/lib/types'
 
-let mockMapBehavior: 'ok' | 'dynamic-reject' | 'render-error' = 'ok'
-let mockDynamicOptions: { ssr?: boolean; loading?: () => React.ReactNode } | null = null
+interface DynamicTestState {
+  behavior: 'ok' | 'dynamic-reject' | 'render-error'
+  options: { ssr?: boolean; loading?: () => React.ReactNode } | null
+}
+
+const dynamicTestState = globalThis as typeof globalThis & {
+  __routeMapDynamicTestState?: DynamicTestState
+}
 
 jest.mock('next/dynamic', () => ({
   __esModule: true,
@@ -16,7 +22,16 @@ jest.mock('next/dynamic', () => ({
       _loader: () => Promise<unknown>,
       options: { ssr?: boolean; loading?: () => React.ReactNode }
     ) => {
-      mockDynamicOptions = options
+      const root = (
+        globalThis as typeof globalThis & {
+          __routeMapDynamicTestState?: DynamicTestState
+        }
+      )
+      const state = (root.__routeMapDynamicTestState ??= {
+        behavior: 'ok',
+        options: null,
+      })
+      state.options = options
       return function MockRouteMapView({
         groups,
         mode,
@@ -24,10 +39,15 @@ jest.mock('next/dynamic', () => ({
         groups: Array<Array<{ name: string; coordinate: RouteCoordinate | null }>>
         mode: 'day' | 'all'
       }) {
-        if (mockMapBehavior === 'dynamic-reject') {
+        const behavior = (
+          globalThis as typeof globalThis & {
+            __routeMapDynamicTestState?: DynamicTestState
+          }
+        ).__routeMapDynamicTestState?.behavior
+        if (behavior === 'dynamic-reject') {
           throw new Error('dynamic import rejected')
         }
-        if (mockMapBehavior === 'render-error') {
+        if (behavior === 'render-error') {
           throw new Error('map render failed')
         }
         return (
@@ -117,7 +137,11 @@ async function expand(user = userEvent.setup()) {
 
 describe('ItineraryRouteMap', () => {
   beforeEach(() => {
-    mockMapBehavior = 'ok'
+    dynamicTestState.__routeMapDynamicTestState = {
+      behavior: 'ok',
+      options:
+        dynamicTestState.__routeMapDynamicTestState?.options ?? null,
+    }
     mockLoadRouteLocations.mockReset()
     mockLoadRouteLocations.mockResolvedValue(new Map())
   })
@@ -134,8 +158,12 @@ describe('ItineraryRouteMap', () => {
     expect(toggle).toHaveAttribute('aria-controls')
     expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument()
     expect(mockLoadRouteLocations).not.toHaveBeenCalled()
-    expect(mockDynamicOptions).toMatchObject({ ssr: false })
-    expect(mockDynamicOptions?.loading?.()).toBeTruthy()
+    expect(dynamicTestState.__routeMapDynamicTestState?.options).toMatchObject({
+      ssr: false,
+    })
+    expect(
+      dynamicTestState.__routeMapDynamicTestState?.options?.loading?.()
+    ).toBeTruthy()
 
     await expand()
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
@@ -319,7 +347,7 @@ describe('ItineraryRouteMap', () => {
     'contains a %s inside the map boundary and resets on a view change',
     async (behavior) => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
-      mockMapBehavior = behavior
+      dynamicTestState.__routeMapDynamicTestState!.behavior = behavior
       mockLoadRouteLocations.mockImplementation(async (targets, options) => {
         options.onResult?.(targets[0].key, coordinate(), 'resolved')
         return new Map([[targets[0].key, coordinate()]])
@@ -331,7 +359,7 @@ describe('ItineraryRouteMap', () => {
       expect(screen.getByRole('listitem')).toHaveTextContent('A')
       expect(screen.getByRole('link', { name: '在 Google Maps 打开' })).toBeInTheDocument()
 
-      mockMapBehavior = 'ok'
+      dynamicTestState.__routeMapDynamicTestState!.behavior = 'ok'
       await user.click(screen.getByRole('tab', { name: '全部行程' }))
       expect(screen.getByTestId('route-map-view')).toBeInTheDocument()
       expect(consoleError).toHaveBeenCalled()
