@@ -5,6 +5,8 @@ export const runtime = "edge";
 const WIKIPEDIA_ENDPOINT = "https://en.wikipedia.org/w/api.php";
 const MAX_TITLES = 50;
 const MAX_TITLE_LENGTH = 255;
+const MAX_REQUEST_BODY_BYTES = 128 * 1024;
+const MAX_WIKIPEDIA_URL_LENGTH = 7_500;
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const WIKIPEDIA_REVALIDATE_SECONDS = 2_592_000;
 const USER_AGENT =
@@ -32,12 +34,82 @@ interface WikipediaPage {
 
 class UpstreamContractError extends Error {}
 
+type BodyReadResult =
+  | { body: unknown }
+  | { response: NextResponse };
+
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function cancelBody(body: ReadableStream<Uint8Array> | null) {
+  if (!body) return;
+  try {
+    await body.cancel();
+  } catch {
+    // Cancellation is best-effort and must not replace the validation response.
+  }
+}
+
+async function readRequestBody(request: Request): Promise<BodyReadResult> {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null) {
+    if (!/^\d+$/.test(contentLength)) {
+      await cancelBody(request.body);
+      return { response: errorResponse("invalid Content-Length", 400) };
+    }
+    if (Number(contentLength) > MAX_REQUEST_BODY_BYTES) {
+      await cancelBody(request.body);
+      return { response: errorResponse("request body is too large", 413) };
+    }
+  }
+
+  if (!request.body) {
+    return { response: errorResponse("invalid JSON body", 400) };
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let size = 0;
+  let text = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      size += value.byteLength;
+      if (size > MAX_REQUEST_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Cancellation is best-effort and must not replace the 413 response.
+        }
+        return { response: errorResponse("request body is too large", 413) };
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      // Preserve the request validation error.
+    }
+    return { response: errorResponse("invalid request body", 400) };
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    return { body: JSON.parse(text) as unknown };
+  } catch {
+    return { response: errorResponse("invalid JSON body", 400) };
+  }
 }
 
 function validateRequestBody(
@@ -104,11 +176,13 @@ function parsePage(value: unknown): WikipediaPage {
   }
 
   const isMissing = value.missing === true;
+  if (isMissing) {
+    return { title: value.title, location: null };
+  }
   if (
-    !isMissing &&
-    (typeof value.pageid !== "number" ||
-      !Number.isSafeInteger(value.pageid) ||
-      value.pageid <= 0)
+    typeof value.pageid !== "number" ||
+    !Number.isSafeInteger(value.pageid) ||
+    value.pageid <= 0
   ) {
     throw new UpstreamContractError("invalid page id");
   }
@@ -181,18 +255,13 @@ function resolveCanonicalTitle(
 
 function buildLocations(
   titles: ValidatedTitle[],
-  mappings: WikipediaMapping[],
-  pages: WikipediaPage[],
+  locationsByLookup: Map<string, Location | null>,
 ): Record<string, Location | null> {
-  const locationsByTitle = new Map(
-    pages.map(({ title, location }) => [title, location]),
-  );
-
   return Object.fromEntries(
-    titles.map(({ input, lookup }) => {
-      const canonicalTitle = resolveCanonicalTitle(lookup, mappings);
-      return [input, locationsByTitle.get(canonicalTitle) ?? null];
-    }),
+    titles.map(({ input, lookup }) => [
+      input,
+      locationsByLookup.get(lookup) ?? null,
+    ]),
   );
 }
 
@@ -210,15 +279,49 @@ function wikipediaUrl(titles: string[]): string {
   return `${WIKIPEDIA_ENDPOINT}?${searchParams.toString()}`;
 }
 
-export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return errorResponse("invalid JSON body", 400);
+function wikipediaBatches(titles: string[]): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+
+  for (const title of titles) {
+    const candidate = [...current, title];
+    // URLSearchParams percent-encodes non-ASCII input, so URL length is bytes.
+    if (
+      current.length > 0 &&
+      wikipediaUrl(candidate).length > MAX_WIKIPEDIA_URL_LENGTH
+    ) {
+      batches.push(current);
+      current = [title];
+    } else {
+      current = candidate;
+    }
   }
 
-  const validated = validateRequestBody(body);
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+function resolveBatchLocations(
+  titles: string[],
+  mappings: WikipediaMapping[],
+  pages: WikipediaPage[],
+): Map<string, Location | null> {
+  const locationsByTitle = new Map(
+    pages.map(({ title, location }) => [title, location]),
+  );
+  return new Map(
+    titles.map((title) => {
+      const canonicalTitle = resolveCanonicalTitle(title, mappings);
+      return [title, locationsByTitle.get(canonicalTitle) ?? null];
+    }),
+  );
+}
+
+export async function POST(request: Request) {
+  const bodyResult = await readRequestBody(request);
+  if ("response" in bodyResult) return bodyResult.response;
+
+  const validated = validateRequestBody(bodyResult.body);
   if (validated instanceof NextResponse) return validated;
   if (validated.titles.length === 0) {
     return NextResponse.json({ locations: {} });
@@ -228,37 +331,52 @@ export async function POST(request: Request) {
     new Set(validated.titles.map(({ lookup }) => lookup)),
   );
   const controller = new AbortController();
+  const abortFromRequest = () => controller.abort(request.signal.reason);
+  if (request.signal.aborted) {
+    abortFromRequest();
+  } else {
+    request.signal.addEventListener("abort", abortFromRequest, { once: true });
+  }
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
-    const upstream = await fetch(wikipediaUrl(uniqueTitles), {
-      method: "GET",
-      headers: { "User-Agent": USER_AGENT },
-      signal: controller.signal,
-      next: { revalidate: WIKIPEDIA_REVALIDATE_SECONDS },
-    });
+    const locationsByLookup = new Map<string, Location | null>();
+    for (const batch of wikipediaBatches(uniqueTitles)) {
+      const upstream = await fetch(wikipediaUrl(batch), {
+        method: "GET",
+        headers: { "User-Agent": USER_AGENT },
+        signal: controller.signal,
+        next: { revalidate: WIKIPEDIA_REVALIDATE_SECONDS },
+      });
 
-    if (upstream.status === 429) {
-      return errorResponse("Wikipedia rate limit reached", 429);
-    }
-    if (!upstream.ok) {
-      return errorResponse("Wikipedia is temporarily unavailable", 503);
+      if (upstream.status === 429) {
+        return errorResponse("Wikipedia rate limit reached", 429);
+      }
+      if (!upstream.ok) {
+        return errorResponse("Wikipedia is temporarily unavailable", 503);
+      }
+
+      let upstreamBody: unknown;
+      try {
+        upstreamBody = await upstream.json();
+      } catch {
+        return errorResponse("Wikipedia returned an invalid response", 503);
+      }
+
+      const { mappings, pages } = parseWikipediaResponse(upstreamBody);
+      const batchLocations = resolveBatchLocations(batch, mappings, pages);
+      for (const [title, location] of batchLocations) {
+        locationsByLookup.set(title, location);
+      }
     }
 
-    let upstreamBody: unknown;
-    try {
-      upstreamBody = await upstream.json();
-    } catch {
-      return errorResponse("Wikipedia returned an invalid response", 503);
-    }
-
-    const { mappings, pages } = parseWikipediaResponse(upstreamBody);
     return NextResponse.json({
-      locations: buildLocations(validated.titles, mappings, pages),
+      locations: buildLocations(validated.titles, locationsByLookup),
     });
   } catch {
     return errorResponse("Wikipedia is temporarily unavailable", 503);
   } finally {
     clearTimeout(timeout);
+    request.signal.removeEventListener("abort", abortFromRequest);
   }
 }

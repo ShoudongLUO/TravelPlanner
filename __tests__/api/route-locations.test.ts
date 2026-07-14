@@ -4,6 +4,7 @@
 import { POST } from "@/app/api/route-locations/route";
 
 const WIKIPEDIA_ENDPOINT = "https://en.wikipedia.org/w/api.php";
+const MAX_REQUEST_BODY_BYTES = 128 * 1024;
 
 function requestWithBody(body: unknown): Request {
   return new Request("http://localhost/api/route-locations", {
@@ -11,6 +12,31 @@ function requestWithBody(body: unknown): Request {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function requestWithStream(
+  chunks: Uint8Array[],
+  signal?: AbortSignal,
+): Request {
+  let index = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(chunks[index]);
+        index += 1;
+      } else {
+        controller.close();
+      }
+    },
+  });
+  const init: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: stream,
+    duplex: "half",
+    signal,
+  };
+  return new Request("http://localhost/api/route-locations", init);
 }
 
 function wikipediaResponse(
@@ -107,6 +133,76 @@ describe("POST /api/route-locations", () => {
 
     expect(response.status).toBe(200);
     expect(Object.keys(body.locations)).toHaveLength(50);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("batches 50 maximally escaped titles into bounded GET URLs and merges results", async () => {
+    const titles = Array.from({ length: 50 }, (_, index) =>
+      `${"界".repeat(251)}${String(index).padStart(4, "0")}`,
+    );
+    fetchMock.mockImplementation((input) => {
+      const batchTitles = new URL(String(input)).searchParams
+        .get("titles")
+        ?.split("|") ?? [];
+      return wikipediaResponse({
+        query: {
+          pages: batchTitles.map((title) => {
+            const index = Number(title.slice(-4));
+            return page(title, index, index, index + 1);
+          }),
+        },
+      });
+    });
+
+    const response = await POST(requestWithBody({ titles }));
+    const body = (await response.json()) as {
+      locations: Record<string, { lat: number; lng: number } | null>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    for (const [input, init] of fetchMock.mock.calls) {
+      const url = String(input);
+      expect(url).toMatch(/^[\x00-\x7F]+$/);
+      expect(url.length).toBeLessThanOrEqual(7_500);
+      expect(init).toEqual(
+        expect.objectContaining({
+          method: "GET",
+          next: { revalidate: 2_592_000 },
+        }),
+      );
+    }
+    titles.forEach((title, index) => {
+      expect(body.locations[title]).toEqual({ lat: index, lng: index });
+    });
+  });
+
+  it("does not return partial locations when a later URL batch fails", async () => {
+    const titles = Array.from({ length: 4 }, (_, index) =>
+      `${"界".repeat(251)}${String(index).padStart(4, "0")}`,
+    );
+    fetchMock
+      .mockImplementationOnce((input) => {
+        const batchTitles = new URL(String(input)).searchParams
+          .get("titles")
+          ?.split("|") ?? [];
+        return wikipediaResponse({
+          query: {
+            pages: batchTitles.map((title, index) =>
+              page(title, index, index, index + 1),
+            ),
+          },
+        });
+      })
+      .mockReturnValueOnce(wikipediaResponse({ error: "upstream" }, 503));
+
+    const response = await POST(requestWithBody({ titles }));
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(503);
+    expect(body).toEqual({ error: expect.any(String) });
+    expect(body).not.toHaveProperty("locations");
   });
 
   it("rejects more than 50 titles", async () => {
@@ -150,6 +246,61 @@ describe("POST /api/route-locations", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: expect.any(String) });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized body from Content-Length without fetching upstream", async () => {
+    const body = JSON.stringify({
+      titles: ["Paris"],
+      extra: "x".repeat(MAX_REQUEST_BODY_BYTES),
+    });
+    const response = await POST(
+      new Request("http://localhost/api/route-locations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(new TextEncoder().encode(body).byteLength),
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("streams and cancels an oversized body without Content-Length", async () => {
+    const encoder = new TextEncoder();
+    const cancel = jest.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("x".repeat(100_000)));
+        controller.enqueue(encoder.encode("x".repeat(40_000)));
+      },
+      cancel,
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: stream,
+      duplex: "half",
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/route-locations", init),
+    );
+
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed UTF-8 before JSON parsing", async () => {
+    const response = await POST(
+      requestWithStream([new Uint8Array([0xc3, 0x28])]),
+    );
+
+    expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -235,7 +386,11 @@ describe("POST /api/route-locations", () => {
       wikipediaResponse({
         query: {
           pages: [
-            { title: "Missing", missing: true },
+            {
+              title: "Missing",
+              missing: true,
+              coordinates: [{ lat: 48.8566, lon: 2.3522 }],
+            },
             { pageid: 2, title: "No coordinates" },
           ],
         },
@@ -381,6 +536,39 @@ describe("POST /api/route-locations", () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it("forwards request cancellation and removes abort and timer resources", async () => {
+    jest.useFakeTimers();
+    const requestController = new AbortController();
+    const request = new Request("http://localhost/api/route-locations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titles: ["Paris"] }),
+      signal: requestController.signal,
+    });
+    const removeListener = jest.spyOn(request.signal, "removeEventListener");
+    let upstreamSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation((_input, init) => {
+      upstreamSignal = init?.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        upstreamSignal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const responsePromise = POST(request);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(upstreamSignal?.aborted).toBe(false);
+
+    requestController.abort();
+    const response = await responsePromise;
+
+    expect(upstreamSignal?.aborted).toBe(true);
+    expect(response.status).toBe(503);
+    expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it("clears the timeout after a successful request", async () => {
     jest.useFakeTimers();
     fetchMock.mockReturnValue(
@@ -416,5 +604,35 @@ describe("POST /api/route-locations", () => {
     expect(await response.json()).toEqual({
       locations: { Paris: { lat: 48.8566, lng: 2.3522 } },
     });
+  });
+
+  it("serializes prototype-like input keys as safe own properties", async () => {
+    fetchMock.mockReturnValue(
+      wikipediaResponse({
+        query: {
+          pages: [
+            page("__proto__", 1, 2, 1),
+            page("constructor", 3, 4, 2),
+          ],
+        },
+      }),
+    );
+
+    const response = await POST(
+      requestWithBody({ titles: ["__proto__", "constructor"] }),
+    );
+    const body = (await response.json()) as {
+      locations: Record<string, { lat: number; lng: number } | null>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(
+      Object.prototype.hasOwnProperty.call(body.locations, "__proto__"),
+    ).toBe(true);
+    expect(
+      Object.prototype.hasOwnProperty.call(body.locations, "constructor"),
+    ).toBe(true);
+    expect(body.locations["__proto__"]).toEqual({ lat: 1, lng: 2 });
+    expect(body.locations.constructor).toEqual({ lat: 3, lng: 4 });
   });
 });
