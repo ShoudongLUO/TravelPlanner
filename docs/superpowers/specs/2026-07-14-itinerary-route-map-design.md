@@ -1,7 +1,7 @@
 # 行程路线图设计
 
 - 日期：2026-07-14
-- 状态：已获用户确认
+- 状态：已获用户确认，按独立审查意见修订
 - 目标分支：`feature/itinerary-route-map`
 
 ## 目标
@@ -16,6 +16,7 @@
 - 站内地图使用编号标记和顺序连线；连线表达游览顺序，不声称是实际道路。
 - 每个单日视图提供 Google Maps 路线链接，不需要 Google API Key。
 - “全部行程”可能超过移动端 Google Maps 的中途点限制，因此完整路线只在站内展示；外部导航按天提供。
+- 坐标首先通过行程已有的 `timeline.name_en` 批量查询 Wikipedia；没有 Wikipedia 坐标时才串行回退到 Nominatim，仍失败则跳过。
 - 不修改 Supabase 数据库、攻略 JSON 结构或 LLM prompt，旧攻略保持兼容。
 
 ## 用户界面
@@ -47,7 +48,7 @@
 
 - 折叠与展开状态。
 - 当前 Day / 全部行程选择。
-- 从日程中提取、规范化和去重景点。
+- 从日程中提取景点 occurrence，并将其映射到去重的坐标查询目标。
 - 首次展开时启动按需地理编码。
 - 读取和写入浏览器缓存。
 - 加载、部分成功、完全失败等 UI 状态。
@@ -71,24 +72,38 @@
 使用纯函数处理：
 
 - 景点规范化与去重。
+- 将 attraction 与同日 timeline 的中英文名称保守匹配。
 - 按日和全部视图筛选。
 - Google Maps URL 编码。
 - 坐标缓存键生成。
 
 这些函数独立单元测试，不依赖 DOM 或 Leaflet。
 
-## 地理编码数据流
+## 景点与坐标数据模型
+
+路线数据分成两层，避免“去重”破坏日程顺序：
+
+- `occurrences`：每个 Day 中每次出现的景点，保留展示原文、Day、原始顺序和匹配到的 `timeline.name_en`。跨天重复景点不会删除。
+- `locationTargets`：仅为减少外部请求而去重的坐标目标。优先键为规范化后的 Wikipedia 英文标题；没有英文匹配时使用“中文景点名 + 目的地”。
+
+坐标结果映射回所有 occurrence。单日视图按 occurrence 顺序重新编号；全部视图为每一天绘制独立折线，不连接上一天的终点和下一天的起点。规范化只折叠首尾及连续空白并进行大小写比较，不改变展示原文。空白 attraction 会被过滤，也不计入“已定位 X/Y”的分母。
+
+## 坐标查询数据流
 
 1. 行程生成完成后渲染折叠卡片，不发起地理编码请求。
 2. 用户首次展开。
-3. 从 `day.attractions` 建立带 Day 与顺序信息的景点列表。
-4. 以“景点名 + 目的地”为查询条件，先读取版本化浏览器缓存。
-5. 对未命中的景点依次调用 `/api/geocode`，保持最多每秒一次。
-6. API 返回 `display_name`、`city`、`country`、`country_code`、`lat` 与 `lng`。
-7. 成功结果写入缓存并立即更新地图；失败结果记录为不可定位，但不阻断其他景点。
-8. 切换 Day 或全部视图只筛选已有结果，不重复请求。
+3. 从 `day.attractions` 建立 occurrence，并在同日 timeline 中按名称精确匹配、再保守包含匹配，以取得 `name_en`。
+4. 读取 `travelai:route-location-cache:v1` 浏览器缓存。缓存 TTL 为 30 天，最多保留最近 300 个查询；过期、格式错误或越界坐标直接删除。
+5. 将未命中且具有 `name_en` 的目标批量发送到 `/api/route-locations`。服务端使用 GET 调用 English Wikipedia Action API 的 `prop=coordinates`、`redirects=1`，每批最多 50 个标题，携带可识别 User-Agent，并通过 Next fetch cache 保存 30 天。
+6. `/api/route-locations` 映射 normalized/redirect title，返回每个输入标题对应的有限数值型 `lat`、`lng`；缺页或无坐标返回 `null`，不使整批失败。
+7. 对没有英文标题或 Wikipedia 返回 `null` 的目标，以“景点名 + 目的地”为查询条件，串行调用现有 `/api/geocode`，客户端调用间隔至少一秒。
+8. `/api/geocode` 保留现有候选数组契约并为每个候选增加数值型 `lat`、`lng`；过滤 NaN、纬度越界和经度越界，客户端确定性选择首个候选。
+9. 成功结果写入浏览器缓存并立即更新地图；确定性的“Wikipedia 无坐标”可随缓存保存，Nominatim 无结果缓存 24 小时；超时、429 和 5xx 不做负缓存。
+10. 切换 Day 或全部视图只筛选已有结果，不重复请求。
 
-公开 Nominatim 服务要求不超过每秒一次请求、标识应用并缓存结果。当前 API 已提供应用 User-Agent；新实现必须保持串行查询并加入浏览器缓存。
+公开 Nominatim 要求最多每秒一次、标识应用并缓存结果。本功能将它限制为 Wikipedia 失败后的低频回退，并使用串行调用、浏览器缓存、上游响应缓存和现有应用 User-Agent。客户端限流无法在多实例部署下提供严格的全局速率保证，因此这是小规模项目的明确限制；流量增长前必须换成可保证配额的地理编码服务、自托管 Nominatim，或增加共享队列与缓存。不得将本实现描述为高并发生产级 Nominatim 集成。
+
+`/api/route-locations` 与 `/api/geocode` 都限制输入数量和查询长度，并为上游请求设置超时。上游 429 保留为可重试状态；其他 5xx 返回降级响应，不影响攻略页面。
 
 ## Google Maps 链接
 
@@ -98,19 +113,32 @@
 - 最后一个景点为 `destination`。
 - 中间景点为 `waypoints`。
 - 所有名称附加目的地并进行 URL 编码。
-- 只有一个有效景点时使用搜索 URL，而不是路线 URL。
+- 只有一个非空景点时使用搜索 URL，而不是路线 URL。
+- 外链始终由原始非空 attraction 名称构造，与 Wikipedia/Nominatim 是否定位成功无关。
+- 为兼容移动端最多 3 个 waypoints，每段最多包含 5 个停靠点（起点 + 3 个中途点 + 终点）。超过 5 个景点时按顺序分段，相邻段共享端点，并显示“第 1/2 段”等按钮，绝不静默截断。
 
 Google Maps URL 使用 `api=1`，不调用付费 Directions API，也不需要 API Key。
 
 ## 失败与降级
 
-- API 返回非成功状态：该景点标记为失败，继续查询下一项。
+- Wikipedia 批量请求失败：所有受影响目标进入 Nominatim 回退，不阻断页面。
+- Nominatim 返回非成功状态：该景点标记为失败，继续查询下一项；429、5xx 和超时允许刷新页面或显式重试时再次请求。
 - 部分景点失败：跳过失败景点画线，显示“已定位 X/Y 个景点”。
 - 有效坐标少于两个：不渲染折线，保留可用标记和地点列表。
-- 全部景点失败：用明确的空状态替代地图，并保留按天 Google Maps 搜索/路线入口。
+- 全部景点失败：用明确的空状态替代地图，并保留由原始景点名生成的按天 Google Maps 搜索/路线入口。
 - 缓存内容格式无效：忽略对应条目并重新查询。
-- 组件卸载或折叠时避免在已卸载组件上更新状态；再次展开复用已获取结果。
+- 首次展开后即使再次折叠，已经开始的批次继续完成并缓存，折叠仅隐藏地图；组件卸载时通过 `AbortController` 取消上游请求并清理计时器。React Strict Mode 下用 ref 保证同一挂载周期只启动一次；再次展开复用结果。
+- 路线图提供“重试失败地点”操作，只重试未成功且未被有效负缓存覆盖的目标。
+- 地图动态加载失败时显示地点列表和 Google Maps 外链，攻略其他内容继续可用。
 - 地理编码失败不得影响攻略保存、详情浏览或其他页面功能。
+
+## 可访问性与第三方服务
+
+- 折叠按钮使用 `aria-expanded` 与 `aria-controls`。
+- Day 切换使用可键盘操作的 tab 语义和明确的选中状态。
+- 外链在新窗口打开并使用 `rel="noopener noreferrer"`。
+- Leaflet TileLayer 保留 OpenStreetMap attribution；展开地图会把用户 IP 和可见地图区域发送给 OSM tile 服务。
+- 浏览器缓存只保存查询名称、坐标、来源和时间戳。共享浏览器可能保留用户查看过的地点，这是本地持久缓存的隐私权衡。
 
 ## 预期文件
 
@@ -119,8 +147,10 @@ Google Maps URL 使用 `api=1`，不调用付费 Directions API，也不需要 A
 - `components/ItineraryRouteMap.tsx`
 - `components/ItineraryRouteMapView.tsx`
 - `lib/itinerary-route.ts`
+- `app/api/route-locations/route.ts`
 - `__tests__/components/ItineraryRouteMap.test.tsx`
 - `__tests__/lib/itinerary-route.test.ts`
+- `__tests__/api/route-locations.test.ts`
 
 预计修改：
 
@@ -135,14 +165,19 @@ Google Maps URL 使用 `api=1`，不调用付费 Directions API，也不需要 A
 
 自动化测试覆盖：
 
-- `/api/geocode` 坐标字段映射与错误返回。
+- Wikipedia 批量坐标的正常、redirect/normalized、缺页、无坐标、超时、429 与 5xx 映射。
+- `/api/geocode` 坐标字段映射、有限值/范围校验、空查询、超长查询、无结果、超时、429 与 5xx。
 - 折叠状态不请求坐标，首次展开才请求。
 - 浏览器缓存命中时不发请求。
-- 查询串行执行并保持请求顺序。
-- 景点按日提取、规范化、去重且保留顺序。
-- Day / 全部行程切换。
+- Wikipedia 优先、Nominatim 回退、回退串行和重试行为。
+- 缓存 TTL、容量淘汰、有效负缓存与瞬时错误不负缓存。
+- occurrence 保留跨天重复和原顺序，locationTarget 去重查询，结果正确映射回所有 occurrence。
+- Day / 全部行程切换；全部视图每天独立折线。
 - 部分定位失败和完全失败的降级 UI。
-- Google Maps 搜索与路线 URL 的顺序和编码。
+- Google Maps 外链与坐标成功状态解耦；覆盖 1、2、5、6 个及更多景点的顺序、编码与分段。
+- 快速展开—折叠—再展开、卸载、重试和 Strict Mode 不重复启动。
+- 0 天、空 attractions、单日、重复景点、空 destination 和动态地图加载失败。
+- 折叠按钮、tabs 和外链的无障碍属性。
 - 生成完成页和详情页都渲染路线图入口。
 
 完成实现后运行：
@@ -157,7 +192,8 @@ npm run build
 
 ## 风险与非目标
 
-- Nominatim 可能无法识别 AI 生成的别名；通过加入目的地、跳过失败项和 Google Maps 入口降级。
+- Wikipedia 页面可能没有坐标，Nominatim 也可能无法识别 AI 生成的别名；通过三级降级和 Google Maps 原始名称入口处理。
+- 公共 Nominatim 回退不具备跨多实例的严格全局限流保证，只适用于当前小规模使用；高并发部署前必须替换或增加共享限流基础设施。
 - 站内折线不是道路导航，不展示预计距离或时间。
 - 本次不接入付费路线 API，不新增环境变量，不持久化坐标到 Supabase。
 - 本次不将餐馆、酒店、跨城交通或任意 timeline 事件加入路线图。
