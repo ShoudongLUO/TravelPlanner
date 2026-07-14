@@ -69,27 +69,30 @@ function timelineWikiTitle(
   return containmentMatches[0].name_en.trim() || null
 }
 
-function targetKey(
+function fallbackTargetKey(
   attractionName: string,
-  destination: string,
-  wikiTitle: string | null
+  destination: string
 ): string {
-  if (wikiTitle) {
-    return `wiki:${normalizeForComparison(wikiTitle)}`
-  }
-
   return `place:${JSON.stringify([
     normalizeForComparison(attractionName),
     normalizeForComparison(destination),
   ])}`
 }
 
+interface RouteOccurrenceCandidate {
+  id: string
+  dayIndex: number
+  order: number
+  name: string
+  matchedWikiTitle: string | null
+  groupKey: string
+}
+
 export function buildRouteModel(
   days: DayPlan[],
   destination: string
 ): { occurrences: RouteOccurrence[]; targets: RouteLocationTarget[] } {
-  const occurrences: RouteOccurrence[] = []
-  const targetByKey = new Map<string, RouteLocationTarget>()
+  const candidates: RouteOccurrenceCandidate[] = []
 
   days.forEach((day, dayIndex) => {
     let order = 0
@@ -99,29 +102,70 @@ export function buildRouteModel(
         return
       }
 
-      const wikiTitle = timelineWikiTitle(name, day.timeline)
-      const key = targetKey(name, destination, wikiTitle)
-      const occurrence: RouteOccurrence = {
+      candidates.push({
         id: `day-${dayIndex}-stop-${order}`,
         dayIndex,
         order,
         name,
-        wikiTitle,
-        targetKey: key,
-      }
-
-      occurrences.push(occurrence)
+        matchedWikiTitle: timelineWikiTitle(name, day.timeline),
+        groupKey: fallbackTargetKey(name, destination),
+      })
       order += 1
-
-      if (!targetByKey.has(key)) {
-        targetByKey.set(key, {
-          key,
-          name,
-          destination,
-          wikiTitle,
-        })
-      }
     })
+  })
+
+  const wikiTitlesByGroup = new Map<string, Map<string, string>>()
+
+  candidates.forEach((candidate) => {
+    let titles = wikiTitlesByGroup.get(candidate.groupKey)
+    if (!titles) {
+      titles = new Map()
+      wikiTitlesByGroup.set(candidate.groupKey, titles)
+    }
+
+    if (candidate.matchedWikiTitle) {
+      const normalizedTitle = normalizeForComparison(
+        candidate.matchedWikiTitle
+      )
+      if (!titles.has(normalizedTitle)) {
+        titles.set(normalizedTitle, candidate.matchedWikiTitle)
+      }
+    }
+  })
+
+  const wikiTitleByGroup = new Map<string, string | null>()
+  wikiTitlesByGroup.forEach((titles, groupKey) => {
+    wikiTitleByGroup.set(
+      groupKey,
+      titles.size === 1 ? [...titles.values()][0] : null
+    )
+  })
+
+  const targetByKey = new Map<string, RouteLocationTarget>()
+  const occurrences = candidates.map((candidate): RouteOccurrence => {
+    const wikiTitle = wikiTitleByGroup.get(candidate.groupKey) ?? null
+    const key = wikiTitle
+      ? `wiki:${normalizeForComparison(wikiTitle)}`
+      : candidate.groupKey
+    const occurrence: RouteOccurrence = {
+      id: candidate.id,
+      dayIndex: candidate.dayIndex,
+      order: candidate.order,
+      name: candidate.name,
+      wikiTitle,
+      targetKey: key,
+    }
+
+    if (!targetByKey.has(key)) {
+      targetByKey.set(key, {
+        key,
+        name: candidate.name,
+        destination,
+        wikiTitle,
+      })
+    }
+
+    return occurrence
   })
 
   return { occurrences, targets: [...targetByKey.values()] }

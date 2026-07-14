@@ -166,6 +166,47 @@ describe('buildRouteModel', () => {
       wikiTitle: null,
     })
   })
+
+  it('propagates one Wikipedia title to repeated attractions with a missing match', () => {
+    const { occurrences, targets } = buildRouteModel(
+      [
+        makeDay(
+          ['老城'],
+          [timelineItem('老城', 'Historic Centre of Prague')]
+        ),
+        makeDay(['  老城  ']),
+      ],
+      'Prague'
+    )
+
+    expect(occurrences).toHaveLength(2)
+    expect(occurrences.map(({ wikiTitle }) => wikiTitle)).toEqual([
+      'Historic Centre of Prague',
+      'Historic Centre of Prague',
+    ])
+    expect(occurrences[0].targetKey).toBe(occurrences[1].targetKey)
+    expect(targets).toHaveLength(1)
+    expect(targets[0].wikiTitle).toBe('Historic Centre of Prague')
+  })
+
+  it('uses one fallback target when repeated attractions have conflicting titles', () => {
+    const { occurrences, targets } = buildRouteModel(
+      [
+        makeDay(['中央公园'], [timelineItem('中央公园', 'Central Park')]),
+        makeDay(
+          ['中央公园'],
+          [timelineItem('中央公园', 'Zhongyang Park')]
+        ),
+      ],
+      '目的地'
+    )
+
+    expect(occurrences).toHaveLength(2)
+    expect(occurrences.map(({ wikiTitle }) => wikiTitle)).toEqual([null, null])
+    expect(occurrences[0].targetKey).toBe(occurrences[1].targetKey)
+    expect(targets).toHaveLength(1)
+    expect(targets[0].wikiTitle).toBeNull()
+  })
 })
 
 describe('applyTargetResults', () => {
@@ -198,9 +239,13 @@ describe('applyTargetResults', () => {
 })
 
 describe('groupRouteByDay', () => {
+  it('returns no groups for no occurrences', () => {
+    expect(groupRouteByDay([])).toEqual([])
+  })
+
   it('keeps all-view occurrences in independent day groups and day order', () => {
     const model = buildRouteModel(
-      [makeDay(['A', 'B']), makeDay(['C'])],
+      [makeDay(['A', 'B']), makeDay([]), makeDay(['C'])],
       'Paris'
     )
     const resolved = applyTargetResults(model.occurrences, new Map())
@@ -209,6 +254,7 @@ describe('groupRouteByDay', () => {
 
     expect(groups.map((group) => group.map(({ name }) => name))).toEqual([
       ['A', 'B'],
+      [],
       ['C'],
     ])
   })
