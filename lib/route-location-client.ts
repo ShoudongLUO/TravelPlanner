@@ -72,7 +72,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteCoordinate(
   value: unknown
-): value is Pick<RouteCoordinate, 'lat' | 'lng'> {
+): value is Record<string, unknown> &
+  Pick<RouteCoordinate, 'lat' | 'lng'> {
   if (!isRecord(value)) {
     return false
   }
