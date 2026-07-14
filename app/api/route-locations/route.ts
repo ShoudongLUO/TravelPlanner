@@ -57,15 +57,19 @@ function validateRequestBody(
       return errorResponse("every title must be a string", 400);
     }
 
-    const lookup = title.trim();
-    if (lookup.length === 0) {
-      return errorResponse("titles must not be blank", 400);
-    }
-    if (lookup.length > MAX_TITLE_LENGTH) {
+    if (title.length > MAX_TITLE_LENGTH) {
+      if (title.trim().length <= MAX_TITLE_LENGTH) {
+        return errorResponse("titles contain excessive surrounding whitespace", 400);
+      }
       return errorResponse(
         `titles must be at most ${MAX_TITLE_LENGTH} characters`,
         413,
       );
+    }
+
+    const lookup = title.trim();
+    if (lookup.length === 0) {
+      return errorResponse("titles must not be blank", 400);
     }
 
     titles.push({ input: title, lookup });

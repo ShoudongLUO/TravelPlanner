@@ -118,12 +118,37 @@ describe("POST /api/route-locations", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects titles longer than 255 characters", async () => {
+  it("accepts a title containing exactly 255 characters", async () => {
+    const title = "a".repeat(255);
+    fetchMock.mockReturnValue(
+      wikipediaResponse({ query: { pages: [page(title, 1, 2)] } }),
+    );
+
+    const response = await POST(requestWithBody({ titles: [title] }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      locations: { [title]: { lat: 1, lng: 2 } },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects ordinary titles longer than 255 characters", async () => {
     const response = await POST(
       requestWithBody({ titles: ["a".repeat(256)] }),
     );
 
     expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: expect.any(String) });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized whitespace padding before lookup normalization", async () => {
+    const paddedTitle = `${" ".repeat(100_000)}Paris`;
+
+    const response = await POST(requestWithBody({ titles: [paddedTitle] }));
+
+    expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: expect.any(String) });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -303,9 +328,26 @@ describe("POST /api/route-locations", () => {
     expect(await response.json()).toEqual({ error: expect.any(String) });
   });
 
-  it("aborts timed-out requests, returns 503, and clears the timer", async () => {
+  it("maps invalid upstream JSON to 503 without returning locations", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("{", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const response = await POST(requestWithBody({ titles: ["Paris"] }));
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(503);
+    expect(body).toEqual({ error: expect.any(String) });
+    expect(body).not.toHaveProperty("locations");
+  });
+
+  it("aborts at exactly 10 seconds, returns 503, and clears the timer", async () => {
     jest.useFakeTimers();
     let capturedSignal: AbortSignal | undefined;
+    let settled = false;
     fetchMock.mockImplementation((_input, init) => {
       capturedSignal = init?.signal ?? undefined;
       return new Promise<Response>((_resolve, reject) => {
@@ -316,11 +358,25 @@ describe("POST /api/route-locations", () => {
     });
 
     const responsePromise = POST(requestWithBody({ titles: ["Paris"] }));
-    await jest.advanceTimersByTimeAsync(60_000);
-    const response = await responsePromise;
+    void responsePromise.then(() => {
+      settled = true;
+    });
+    await jest.advanceTimersByTimeAsync(0);
 
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal?.aborted).toBe(false);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(9_999);
+
+    expect(capturedSignal?.aborted).toBe(false);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(1);
+    const response = await responsePromise;
+
     expect(capturedSignal?.aborted).toBe(true);
+    expect(settled).toBe(true);
     expect(response.status).toBe(503);
     expect(jest.getTimerCount()).toBe(0);
   });
